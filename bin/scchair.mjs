@@ -15,13 +15,15 @@ function printHelp() {
 Second Chair — your private interview and meeting copilot
 
 Usage:
-  npx scchair              Start the desktop app (default)
-  npx scchair start        Same as above
-  npx scchair web          Browser-only mode (no Electron shell)
-  npx scchair doctor       Check Node, Python, and dependencies
+  scchair                  Start the desktop app (default)
+  scchair start            Same as above
+  scchair web              Browser-only mode (no Electron shell)
+  scchair doctor           Check Node, Python, and dependencies
 
-First run installs npm packages automatically. Add API keys in Settings
-(NVIDIA is the default provider). Keys stay on your machine.
+Install (one time):
+  curl -fsSL https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/install.sh | bash
+
+Add API keys in Settings (NVIDIA is the default provider). Keys stay on your machine.
 
 Docs: https://github.com/kashyaparun25/scchair
 `);
@@ -29,7 +31,7 @@ Docs: https://github.com/kashyaparun25/scchair
 
 async function doctor() {
   await bootstrapEnvironment();
-  log("Environment looks good. Run: npx scchair");
+  log("Environment looks good. Run: scchair");
 }
 
 async function startWeb() {
@@ -65,7 +67,7 @@ async function main() {
       await startDesktop();
       return;
     default:
-      fail(`Unknown command "${command}". Run: npx scchair help`);
+      fail(`Unknown command "${command}". Run: scchair help`);
   }
 }
 
