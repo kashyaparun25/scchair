@@ -1,0 +1,94 @@
+{
+  "name": "scchair",
+  "version": "0.1.0",
+  "description": "Second Chair — private real-time interview and meeting assistant. One command: npx scchair",
+  "type": "module",
+  "main": "electron/main.js",
+  "bin": {
+    "scchair": "./bin/scchair.mjs"
+  },
+  "files": [
+    "bin/",
+    "electron/",
+    "scripts/",
+    "src/",
+    "public/",
+    "index.html",
+    "vite.config.ts",
+    "tsconfig.json",
+    "tsconfig.app.json",
+    ".env.example",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "os": [
+    "darwin",
+    "win32"
+  ],
+  "keywords": [
+    "interview",
+    "meeting",
+    "assistant",
+    "copilot",
+    "electron",
+    "realtime",
+    "second-chair",
+    "scchair"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kashyaparun25/scchair.git"
+  },
+  "homepage": "https://github.com/kashyaparun25/scchair#readme",
+  "bugs": {
+    "url": "https://github.com/kashyaparun25/scchair/issues"
+  },
+  "scripts": {
+    "start": "node bin/scchair.mjs start",
+    "scchair": "node bin/scchair.mjs",
+    "doctor": "node bin/scchair.mjs doctor",
+    "dev": "node scripts/dev.mjs",
+    "dev:desktop": "node electron/dev.mjs",
+    "dev:desktop:main": "SECOND_CHAIR_STARTUP_SURFACE=main node electron/dev.mjs",
+    "dev:desktop:overlay": "SECOND_CHAIR_STARTUP_SURFACE=overlay node electron/dev.mjs",
+    "dev:desktop:answer": "SECOND_CHAIR_STARTUP_SURFACE=answer node electron/dev.mjs",
+    "dev:desktop:all": "SECOND_CHAIR_STARTUP_SURFACE=all node electron/dev.mjs",
+    "dev:ui": "vite --host 127.0.0.1 --strictPort",
+    "dev:api": "tsx src/server/http.ts",
+    "electron": "electron electron/main.js",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "check": "tsc -b && node --check electron/main.js && node --check electron/preload.cjs && node --check electron/dev.mjs && node --check bin/scchair.mjs",
+    "prepublishOnly": "npm run check"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.4",
+    "better-sqlite3": "^12.9.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.0",
+    "multer": "^2.1.1",
+    "openai": "^6.37.0",
+    "pdf-parse": "^2.4.5",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/ws": "^8.18.1",
+    "electron": "^42.0.1",
+    "tsx": "^4.21.0"
+  }
+}

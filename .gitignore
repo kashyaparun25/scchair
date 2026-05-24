@@ -1,0 +1,43 @@
+# Dependencies
+node_modules/
+
+# Secrets and local config
+.env
+.env.local
+.env.*.local
+
+# Runtime data
+.local-data/
+.second-chair-install-stamp
+.scchair-install-stamp
+
+# Build output
+dist/
+release/
+out/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Test artifacts
+test-results/
+playwright-report/
+.playwright-cli/
+.playwright-mcp/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local tooling
+.claude/
