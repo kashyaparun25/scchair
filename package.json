@@ -5,7 +5,7 @@
   "type": "module",
   "main": "electron/main.js",
   "bin": {
-    "scchair": "./bin/scchair.mjs"
+    "scchair": "bin/scchair.mjs"
   },
   "files": [
     "bin/",
