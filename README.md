@@ -60,23 +60,22 @@ All three commands should print version numbers. Once they do, you're ready.
 
 ## Quick start
 
-With Node.js installed, run:
+**No npm account. No GitHub account. No signup.** Anyone with Node.js can run:
 
 ```bash
 npx scchair
 ```
 
-> **Package not on npm yet?** Use this until publish completes:
-> ```bash
-> npx github:kashyaparun25/scchair
-> ```
+That's the only command users need. `npx` downloads and runs the app anonymously — no login required.
 
-That's it. One command:
+On first run it will:
 
-1. Downloads the app (first run only)
-2. Installs dependencies automatically
-3. Creates a local `.env` if needed
-4. Opens the **desktop app** (Electron + local API + UI)
+1. Download the app
+2. Install dependencies automatically
+3. Create a local `.env` if needed
+4. Open the **desktop app** (Electron + local API + UI)
+
+Every run after that is just `npx scchair` again.
 
 ### Other commands
 
@@ -186,23 +185,35 @@ Legacy `INTERVIEW_COPILOT_*` variables are still supported.
 
 ---
 
-## Publish to npm
+## Publish to npm (maintainers — one-time setup)
 
-Maintainers (one-time setup):
+End users never need an npm account. **You** (the maintainer) publish once so `npx scchair` works globally.
+
+### Option A — publish from your machine (fastest)
+
+1. Enable 2FA on your npm account: [npmjs.com/settings → Two-Factor Authentication](https://www.npmjs.com/settings)
+2. Run:
 
 ```bash
-npm login          # sign in at npmjs.com — required once per machine
 cd scchair
-npm publish --access public
+npm publish --access public --otp=YOUR_6_DIGIT_CODE
 ```
 
-After publish, anyone can run `npx scchair` without cloning.
+Replace `YOUR_6_DIGIT_CODE` with your authenticator app code.
 
-Until then, users can install directly from GitHub:
+### Option B — publish via GitHub Actions (automated)
+
+1. Create an **Automation** or **Granular** token at [npmjs.com/settings/tokens](https://www.npmjs.com/settings/tokens) with **Publish** permission
+2. Add it as a repo secret: GitHub repo → **Settings → Secrets → Actions → New secret** → name: `NPM_TOKEN`
+3. Create a GitHub Release (or run the **Publish to npm** workflow manually)
+
+After publish, anyone worldwide runs:
 
 ```bash
-npx github:kashyaparun25/scchair
+npx scchair
 ```
+
+No accounts, no clone, no install step.
 
 ---
 
