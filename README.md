@@ -66,6 +66,11 @@ With Node.js installed, run:
 npx scchair
 ```
 
+> **Package not on npm yet?** Use this until publish completes:
+> ```bash
+> npx github:kashyaparun25/scchair
+> ```
+
 That's it. One command:
 
 1. Downloads the app (first run only)
@@ -183,14 +188,21 @@ Legacy `INTERVIEW_COPILOT_*` variables are still supported.
 
 ## Publish to npm
 
-Maintainers:
+Maintainers (one-time setup):
 
 ```bash
-npm login
+npm login          # sign in at npmjs.com — required once per machine
+cd scchair
 npm publish --access public
 ```
 
-Users then run `npx scchair` without cloning.
+After publish, anyone can run `npx scchair` without cloning.
+
+Until then, users can install directly from GitHub:
+
+```bash
+npx github:kashyaparun25/scchair
+```
 
 ---
 
