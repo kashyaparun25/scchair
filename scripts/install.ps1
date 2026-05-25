@@ -66,9 +66,17 @@ function Ensure-Python {
   return $py
 }
 
+function Test-PythonImport([string[]]$Py, [string]$Module) {
+  $prev = $ErrorActionPreference
+  $ErrorActionPreference = "SilentlyContinue"
+  & $Py[0] $Py[1..($Py.Length - 1)] -c "import $Module" 2>$null | Out-Null
+  $ok = ($LASTEXITCODE -eq 0)
+  $ErrorActionPreference = $prev
+  return $ok
+}
+
 function Ensure-RivaClient([string[]]$Py) {
-  $check = & $Py[0] $Py[1..($Py.Length - 1)] -c "import riva.client" 2>$null
-  if ($LASTEXITCODE -eq 0) {
+  if (Test-PythonImport $Py "riva.client") {
     Log "NVIDIA Riva Python client OK"
     return
   }
@@ -116,7 +124,12 @@ if (-not (Test-Path $AppDir)) {
 
 Log "Installing app dependencies (first run can take a few minutes)..."
 Push-Location $AppDir
-npm install --no-fund --no-audit
+# Use npm.cmd — npm.ps1 is blocked by default PowerShell execution policy on Windows.
+& npm.cmd install --no-fund --no-audit
+if ($LASTEXITCODE -ne 0) {
+  Pop-Location
+  Fail "npm install failed. Try: cd `"$AppDir`" && npm.cmd install"
+}
 Pop-Location
 
 @"
