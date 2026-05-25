@@ -35,12 +35,13 @@ export function run(command, args, options = {}) {
   });
 }
 
-export function runCapture(command, args) {
+export function runCapture(command, args, options = {}) {
   return new Promise((resolve) => {
     const child = spawn(command, args, {
       cwd: root,
-      shell: process.platform === "win32",
+      shell: options.shell ?? process.platform === "win32",
       stdio: ["ignore", "pipe", "pipe"],
+      ...options,
     });
     let stdout = "";
     child.stdout?.on("data", (chunk) => { stdout += chunk; });
@@ -77,8 +78,17 @@ async function pythonCanImport(python, moduleName) {
     ...python.args,
     "-c",
     `import ${moduleName}`,
-  ]);
-  return code === 0;
+  ], { shell: false });
+  if (code === 0) return true;
+
+  const pipShow = await runCapture(python.command, [
+    ...python.args,
+    "-m",
+    "pip",
+    "show",
+    "nvidia-riva-client",
+  ], { shell: false });
+  return pipShow.code === 0 && pipShow.stdout.includes("Name: nvidia-riva-client");
 }
 
 async function ensureNvidiaRivaClient(python) {

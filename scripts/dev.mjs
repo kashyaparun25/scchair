@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
+import { npmCommand, spawnOptions } from "./runtime-env.mjs";
 
 const host = "127.0.0.1";
 const preferredApiPort = Number(process.env.API_PORT || 5180);
@@ -7,7 +8,7 @@ const preferredUiPort = Number(process.env.UI_PORT || 5174);
 const children = new Map();
 let shuttingDown = false;
 
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const npm = npmCommand();
 
 function url(port, path = "") {
   return `http://${host}:${port}${path}`;
@@ -41,10 +42,10 @@ async function findFreePort(startPort) {
 }
 
 function start(name, command, args, env = {}) {
-  const child = spawn(command, args, {
+  const child = spawn(command, args, spawnOptions({
     env: { ...process.env, ...env },
     stdio: ["inherit", "pipe", "pipe"]
-  });
+  }));
 
   child.stdout.on("data", (chunk) => process.stdout.write(`[${name}] ${chunk}`));
   child.stderr.on("data", (chunk) => process.stderr.write(`[${name}] ${chunk}`));

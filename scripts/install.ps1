@@ -42,10 +42,17 @@ function Get-PythonCommand {
   return $null
 }
 
+function Invoke-Python([string[]]$Py, [string[]]$PythonArgs) {
+  if ($Py.Length -gt 1) {
+    return & $Py[0] @($Py[1..($Py.Length - 1)] + $PythonArgs)
+  }
+  return & $Py[0] @PythonArgs
+}
+
 function Ensure-Python {
   $py = Get-PythonCommand
   if ($py) {
-    $version = & $py[0] $py[1..($py.Length - 1)] --version 2>&1
+    $version = Invoke-Python $py @("--version") 2>&1
     Log "Python OK ($version)"
     return $py
   }
@@ -61,7 +68,7 @@ function Ensure-Python {
   if (-not $py) {
     Fail "Python install finished but python is not on PATH. Open a new terminal and re-run the installer."
   }
-  $version = & $py[0] $py[1..($py.Length - 1)] --version 2>&1
+  $version = Invoke-Python $py @("--version") 2>&1
   Log "Python OK ($version)"
   return $py
 }
@@ -69,7 +76,7 @@ function Ensure-Python {
 function Test-PythonImport([string[]]$Py, [string]$Module) {
   $prev = $ErrorActionPreference
   $ErrorActionPreference = "SilentlyContinue"
-  & $Py[0] $Py[1..($Py.Length - 1)] -c "import $Module" 2>$null | Out-Null
+  Invoke-Python $Py @("-c", "import $Module") 2>$null | Out-Null
   $ok = ($LASTEXITCODE -eq 0)
   $ErrorActionPreference = $prev
   return $ok
@@ -82,8 +89,8 @@ function Ensure-RivaClient([string[]]$Py) {
   }
 
   Log "Installing NVIDIA Riva Python client..."
-  & $Py[0] $Py[1..($Py.Length - 1)] -m pip install --upgrade pip 2>$null
-  & $Py[0] $Py[1..($Py.Length - 1)] -m pip install -U nvidia-riva-client
+  Invoke-Python $Py @("-m", "pip", "install", "--upgrade", "pip") 2>$null
+  Invoke-Python $Py @("-m", "pip", "install", "-U", "nvidia-riva-client")
   if ($LASTEXITCODE -ne 0) {
     Fail "Could not install nvidia-riva-client. Run: $($Py -join ' ') -m pip install -U nvidia-riva-client"
   }
@@ -174,6 +181,7 @@ Install-NpmDependencies $AppDir
 
 @"
 @echo off
+set NVIDIA_RIVA_PYTHON=py -3
 node "$AppDir\bin\scchair.mjs" %*
 "@ | Set-Content -Path $Wrapper -Encoding ASCII
 

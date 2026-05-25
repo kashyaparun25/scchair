@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
-import { runtimeEnv } from "../scripts/runtime-env.mjs";
+import { npmCommand, runtimeEnv, spawnOptions } from "../scripts/runtime-env.mjs";
 
 const uiUrl = runtimeEnv("DEV_SERVER_URL", "http://127.0.0.1:5174");
 const apiUrl = runtimeEnv("API_HEALTH_URL", "http://127.0.0.1:5180/api/bootstrap");
@@ -8,10 +8,10 @@ const children = new Map();
 let shuttingDown = false;
 
 function start(name, command, args, env = {}) {
-  const child = spawn(command, args, {
+  const child = spawn(command, args, spawnOptions({
     env: { ...process.env, ...env },
     stdio: ["inherit", "pipe", "pipe"]
-  });
+  }));
 
   child.stdout.on("data", (chunk) => process.stdout.write(`[${name}] ${chunk}`));
   child.stderr.on("data", (chunk) => process.stderr.write(`[${name}] ${chunk}`));
@@ -89,7 +89,7 @@ function shutdown(exitCode = 0) {
 process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
-const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+const npm = npmCommand();
 
 try {
   const existingApiReady = await isUrlReady(apiUrl);

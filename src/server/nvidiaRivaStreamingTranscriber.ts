@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import readline from "node:readline";
 import type { ResolvedCapability } from "./providerRegistry";
+import { resolvePythonSpawn } from "./runtimeEnv";
 
 export interface NvidiaRivaTranscriptEvent {
   type: "transcript";
@@ -47,8 +48,10 @@ export class NvidiaRivaStreamingTranscriber {
     this.releaseProcess();
 
     const scriptPath = path.resolve("scripts/nvidia-riva-stream.py");
-    this.process = spawn(process.env.NVIDIA_RIVA_PYTHON || "python3", ["-u", scriptPath], {
+    const python = resolvePythonSpawn();
+    this.process = spawn(python.command, [...python.argsPrefix, "-u", scriptPath], {
       cwd: process.cwd(),
+      shell: process.platform === "win32",
       env: {
         ...process.env,
         NVIDIA_API_KEY: this.resolved.apiKey,

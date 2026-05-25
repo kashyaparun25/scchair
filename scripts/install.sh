@@ -13,8 +13,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 log() { echo "[scchair] $*" >&2; }
 fail() { echo "[scchair] ERROR: $*" >&2; exit 1; }
 
-# shellcheck source=setup-prerequisites.sh
-source "$SCRIPT_DIR/setup-prerequisites.sh"
+# When users install with `curl .../install.sh | bash`, there is no local
+# sibling setup script yet. Fetch it in that case.
+if [ -f "$SCRIPT_DIR/setup-prerequisites.sh" ]; then
+  # shellcheck source=setup-prerequisites.sh
+  source "$SCRIPT_DIR/setup-prerequisites.sh"
+else
+  # shellcheck source=/dev/null
+  source <(curl -fsSL "https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/setup-prerequisites.sh")
+fi
 
 mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
 

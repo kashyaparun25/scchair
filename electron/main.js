@@ -127,6 +127,7 @@ async function startApiServer() {
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
   apiProcess = spawn(npm, ["run", "dev:api"], {
     cwd: appRoot,
+    shell: process.platform === "win32",
     env: {
       ...process.env,
       API_PORT: new URL(API_BASE_URL).port || "5180"

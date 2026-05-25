@@ -6,3 +6,15 @@ export function runtimeEnv(name, fallback = "") {
   if (legacy !== undefined && String(legacy).trim() !== "") return String(legacy).trim();
   return fallback;
 }
+
+/** Windows needs shell when spawning npm.cmd or other .cmd/.bat files. */
+export function spawnOptions(options = {}) {
+  return {
+    shell: process.platform === "win32",
+    ...options,
+  };
+}
+
+export function npmCommand() {
+  return process.platform === "win32" ? "npm.cmd" : "npm";
+}

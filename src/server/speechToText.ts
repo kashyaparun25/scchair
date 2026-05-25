@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import type { ProviderSettings } from "../shared/domain";
 import { resolveCapability, type ResolvedCapability } from "./providerRegistry";
 import type { SpeechToTextAdapter, SpeechToTextInput } from "./providerSettings";
+import { resolvePythonSpawn } from "./runtimeEnv";
 import { openAiBatchTranscriptionModel } from "./streamingStt";
 
 export type AudioTranscriptionInput = SpeechToTextInput;
@@ -77,9 +78,11 @@ class NvidiaRivaSpeechToTextAdapter implements SpeechToTextAdapter {
       const converted = await transcodeToRivaWav(sourcePath, wavPath, normalized.mimeType);
       if (!converted) return "";
       const scriptPath = path.resolve("scripts/nvidia-riva-asr.py");
+      const python = resolvePythonSpawn();
       const { stdout } = await execFile(
-        process.env.NVIDIA_RIVA_PYTHON || "python3",
+        python.command,
         [
+          ...python.argsPrefix,
           scriptPath,
           "--input-file",
           wavPath,
@@ -92,6 +95,7 @@ class NvidiaRivaSpeechToTextAdapter implements SpeechToTextAdapter {
         ],
         {
           cwd: process.cwd(),
+          shell: process.platform === "win32",
           env: {
             ...process.env,
             NVIDIA_API_KEY: this.resolved.apiKey,
