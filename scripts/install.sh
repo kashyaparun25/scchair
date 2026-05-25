@@ -55,6 +55,20 @@ fi
 log "Installing app dependencies (first run can take a few minutes)..."
 (cd "$APP_DIR" && npm install --no-fund --no-audit)
 
+if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then
+  log "Electron binary is missing; repairing Electron install..."
+  if ! (cd "$APP_DIR" && npm rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000); then
+    if [ -f "$APP_DIR/node_modules/electron/install.js" ]; then
+      (cd "$APP_DIR" && node node_modules/electron/install.js)
+    fi
+  fi
+
+  if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then
+    fail "Electron repair failed. Check your network connection, then run: cd \"$APP_DIR\" && npm rebuild electron"
+  fi
+  log "Electron binary ready."
+fi
+
 # --- CLI wrapper ---
 cat > "$WRAPPER" <<EOF
 #!/usr/bin/env bash

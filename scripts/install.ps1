@@ -144,6 +144,29 @@ function Install-NpmDependencies([string]$TargetDir) {
   }
 }
 
+function Repair-ElectronBinary([string]$TargetDir) {
+  $electronDir = Join-Path $TargetDir "node_modules\electron"
+  $pathTxt = Join-Path $electronDir "path.txt"
+  if (Test-Path $pathTxt) { return }
+
+  Log "Electron binary is missing; repairing Electron install..."
+  Push-Location $TargetDir
+  try {
+    & npm.cmd rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+    if (($LASTEXITCODE -ne 0) -and (Test-Path (Join-Path $electronDir "install.js"))) {
+      & node (Join-Path $electronDir "install.js")
+    }
+  } finally {
+    Pop-Location
+  }
+
+  if (-not (Test-Path $pathTxt)) {
+    Fail "Electron repair failed. Check your internet connection, then run: cd `"$TargetDir`" ; npm.cmd rebuild electron"
+  }
+
+  Log "Electron binary ready."
+}
+
 New-Item -ItemType Directory -Force -Path $InstallRoot, $BinDir | Out-Null
 
 Ensure-Node
@@ -178,6 +201,7 @@ if (-not (Test-Path $AppDir)) {
 
 Log "Installing app dependencies (first run can take a few minutes)..."
 Install-NpmDependencies $AppDir
+Repair-ElectronBinary $AppDir
 
 @"
 @echo off

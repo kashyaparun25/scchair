@@ -111,6 +111,32 @@ async function ensureNvidiaRivaClient(python) {
   log("NVIDIA Riva Python client ready");
 }
 
+async function ensureElectronBinary() {
+  const electronDir = path.join(root, "node_modules", "electron");
+  const electronPathTxt = path.join(electronDir, "path.txt");
+  if (fs.existsSync(electronPathTxt)) return true;
+
+  warn("Electron binary is missing; repairing Electron install...");
+  let code = await run(npmCommand(), [
+    "rebuild",
+    "electron",
+    "--fetch-retries=5",
+    "--fetch-retry-mintimeout=20000",
+    "--fetch-retry-maxtimeout=120000",
+  ]);
+
+  if (code !== 0 && fs.existsSync(path.join(electronDir, "install.js"))) {
+    code = await run(process.execPath, [path.join(electronDir, "install.js")]);
+  }
+
+  if (!fs.existsSync(electronPathTxt)) {
+    fail("Electron repair failed. Check your network connection and run: npm rebuild electron");
+  }
+
+  log("Electron binary ready.");
+  return true;
+}
+
 export async function ensureNpmDependencies() {
   const nodeModules = path.join(root, "node_modules");
   const lockfile = path.join(root, "package-lock.json");
@@ -119,7 +145,7 @@ export async function ensureNpmDependencies() {
 
   if (fs.existsSync(nodeModules) && fs.existsSync(stampPath)) {
     const previous = fs.readFileSync(stampPath, "utf8");
-    if (previous === stampSource) return;
+    if (previous === stampSource && await ensureElectronBinary()) return;
   }
 
   log("Installing dependencies (first run can take a few minutes)...");
@@ -127,6 +153,7 @@ export async function ensureNpmDependencies() {
     env: { ...process.env, npm_config_build_from_source: "true" },
   });
   if (code !== 0) fail("Dependency install failed. Try running from the project folder: npm install");
+  await ensureElectronBinary();
 
   fs.writeFileSync(stampPath, stampSource);
   log("Dependencies ready.");
