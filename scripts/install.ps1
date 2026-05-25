@@ -150,19 +150,46 @@ function Repair-ElectronBinary([string]$TargetDir) {
   if (Test-Path $pathTxt) { return }
 
   Log "Electron binary is missing; repairing Electron install..."
+  $packageJson = Get-Content (Join-Path $TargetDir "package.json") -Raw | ConvertFrom-Json
+  $electronVersion = [string]$packageJson.devDependencies.electron
+  if ([string]::IsNullOrWhiteSpace($electronVersion)) { $electronVersion = "latest" }
+  $electronVersion = $electronVersion -replace '^[\^~]', ''
+
   Push-Location $TargetDir
   try {
     & npm.cmd rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
     if ((-not (Test-Path $pathTxt)) -and (Test-Path (Join-Path $electronDir "install.js"))) {
       Log "Running Electron binary downloader..."
-      & node (Join-Path $electronDir "install.js")
+      $previousForceNoCache = $env:force_no_cache
+      try {
+        $env:force_no_cache = "true"
+        & node (Join-Path $electronDir "install.js")
+      } finally {
+        $env:force_no_cache = $previousForceNoCache
+      }
+    }
+
+    if (-not (Test-Path $pathTxt)) {
+      Log "Electron binary still missing; reinstalling Electron package..."
+      & npm.cmd install "electron@$electronVersion" --save-dev --force --no-fund --no-audit --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+    }
+
+    if ((-not (Test-Path $pathTxt)) -and (Test-Path (Join-Path $electronDir "install.js"))) {
+      Log "Running Electron binary downloader after reinstall..."
+      $previousForceNoCache = $env:force_no_cache
+      try {
+        $env:force_no_cache = "true"
+        & node (Join-Path $electronDir "install.js")
+      } finally {
+        $env:force_no_cache = $previousForceNoCache
+      }
     }
   } finally {
     Pop-Location
   }
 
   if (-not (Test-Path $pathTxt)) {
-    Fail "Electron repair failed. Check your internet connection, then run: cd `"$TargetDir`" ; npm.cmd rebuild electron"
+    Fail "Electron repair failed. Check your internet connection, then run: cd `"$TargetDir`" ; npm.cmd install electron@$electronVersion --save-dev --force"
   }
 
   Log "Electron binary ready."

@@ -22,12 +22,23 @@ export function npmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
+function prepareSpawn(command, args = []) {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
+    return {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", command, ...args],
+    };
+  }
+  return { command, args };
+}
+
 export function run(command, args, options = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    const prepared = prepareSpawn(command, args);
+    const child = spawn(prepared.command, prepared.args, {
       cwd: root,
       stdio: "inherit",
-      shell: process.platform === "win32",
+      shell: false,
       ...options,
     });
     child.on("error", () => resolve(1));
@@ -37,9 +48,10 @@ export function run(command, args, options = {}) {
 
 export function runCapture(command, args, options = {}) {
   return new Promise((resolve) => {
-    const child = spawn(command, args, {
+    const prepared = prepareSpawn(command, args);
+    const child = spawn(prepared.command, prepared.args, {
       cwd: root,
-      shell: options.shell ?? process.platform === "win32",
+      shell: false,
       stdio: ["ignore", "pipe", "pipe"],
       ...options,
     });
@@ -117,6 +129,8 @@ async function ensureElectronBinary() {
   if (fs.existsSync(electronPathTxt)) return true;
 
   warn("Electron binary is missing; repairing Electron install...");
+  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const electronVersion = String(packageJson.devDependencies?.electron || "latest").replace(/^[~^]/, "");
   let code = await run(npmCommand(), [
     "rebuild",
     "electron",
@@ -127,11 +141,35 @@ async function ensureElectronBinary() {
 
   if (!fs.existsSync(electronPathTxt) && fs.existsSync(path.join(electronDir, "install.js"))) {
     log("Running Electron binary downloader...");
-    code = await run(process.execPath, [path.join(electronDir, "install.js")]);
+    code = await run(process.execPath, [path.join(electronDir, "install.js")], {
+      env: { ...process.env, force_no_cache: "true" },
+    });
   }
 
   if (!fs.existsSync(electronPathTxt)) {
-    fail("Electron repair failed. Check your network connection and run: npm rebuild electron");
+    warn("Electron binary still missing; reinstalling Electron package...");
+    code = await run(npmCommand(), [
+      "install",
+      `electron@${electronVersion}`,
+      "--save-dev",
+      "--force",
+      "--no-fund",
+      "--no-audit",
+      "--fetch-retries=5",
+      "--fetch-retry-mintimeout=20000",
+      "--fetch-retry-maxtimeout=120000",
+    ]);
+  }
+
+  if (!fs.existsSync(electronPathTxt) && fs.existsSync(path.join(electronDir, "install.js"))) {
+    log("Running Electron binary downloader after reinstall...");
+    code = await run(process.execPath, [path.join(electronDir, "install.js")], {
+      env: { ...process.env, force_no_cache: "true" },
+    });
+  }
+
+  if (!fs.existsSync(electronPathTxt)) {
+    fail(`Electron repair failed. Check your network connection and run: npm install electron@${electronVersion} --save-dev --force`);
   }
 
   log("Electron binary ready.");

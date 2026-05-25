@@ -7,10 +7,20 @@ export function runtimeEnv(name, fallback = "") {
   return fallback;
 }
 
-/** Windows needs shell when spawning npm.cmd or other .cmd/.bat files. */
+/** Windows cannot spawn .cmd/.bat files directly in all Node versions. */
+export function prepareSpawn(command, args = []) {
+  if (process.platform === "win32" && /\.(cmd|bat)$/i.test(command)) {
+    return {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", command, ...args],
+    };
+  }
+  return { command, args };
+}
+
 export function spawnOptions(options = {}) {
   return {
-    shell: process.platform === "win32",
+    shell: false,
     ...options,
   };
 }

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
-import { npmCommand, runtimeEnv, spawnOptions } from "../scripts/runtime-env.mjs";
+import { npmCommand, prepareSpawn, runtimeEnv, spawnOptions } from "../scripts/runtime-env.mjs";
 
 const uiUrl = runtimeEnv("DEV_SERVER_URL", "http://127.0.0.1:5174");
 const apiUrl = runtimeEnv("API_HEALTH_URL", "http://127.0.0.1:5180/api/bootstrap");
@@ -8,7 +8,8 @@ const children = new Map();
 let shuttingDown = false;
 
 function start(name, command, args, env = {}) {
-  const child = spawn(command, args, spawnOptions({
+  const prepared = prepareSpawn(command, args);
+  const child = spawn(prepared.command, prepared.args, spawnOptions({
     env: { ...process.env, ...env },
     stdio: ["inherit", "pipe", "pipe"]
   }));

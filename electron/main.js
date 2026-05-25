@@ -10,7 +10,7 @@ import {
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runtimeEnv } from "../scripts/runtime-env.mjs";
+import { prepareSpawn, runtimeEnv } from "../scripts/runtime-env.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -125,9 +125,9 @@ async function startApiServer() {
   }
 
   const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  apiProcess = spawn(npm, ["run", "dev:api"], {
+  const prepared = prepareSpawn(npm, ["run", "dev:api"]);
+  apiProcess = spawn(prepared.command, prepared.args, {
     cwd: appRoot,
-    shell: process.platform === "win32",
     env: {
       ...process.env,
       API_PORT: new URL(API_BASE_URL).port || "5180"

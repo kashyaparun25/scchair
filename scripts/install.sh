@@ -57,14 +57,25 @@ log "Installing app dependencies (first run can take a few minutes)..."
 
 if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then
   log "Electron binary is missing; repairing Electron install..."
+  ELECTRON_VERSION="$(node -e "const p=require('$APP_DIR/package.json'); console.log(String(p.devDependencies?.electron || 'latest').replace(/^[~^]/,''))")"
   (cd "$APP_DIR" && npm rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000) || true
   if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ] && [ -f "$APP_DIR/node_modules/electron/install.js" ]; then
     log "Running Electron binary downloader..."
-    (cd "$APP_DIR" && node node_modules/electron/install.js)
+    (cd "$APP_DIR" && force_no_cache=true node node_modules/electron/install.js) || true
   fi
 
   if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then
-    fail "Electron repair failed. Check your network connection, then run: cd \"$APP_DIR\" && npm rebuild electron"
+    log "Electron binary still missing; reinstalling Electron package..."
+    (cd "$APP_DIR" && npm install "electron@$ELECTRON_VERSION" --save-dev --force --no-fund --no-audit --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000)
+  fi
+
+  if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ] && [ -f "$APP_DIR/node_modules/electron/install.js" ]; then
+    log "Running Electron binary downloader after reinstall..."
+    (cd "$APP_DIR" && force_no_cache=true node node_modules/electron/install.js) || true
+  fi
+
+  if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then
+    fail "Electron repair failed. Check your network connection, then run: cd \"$APP_DIR\" && npm install electron@$ELECTRON_VERSION --save-dev --force"
   fi
   log "Electron binary ready."
 fi

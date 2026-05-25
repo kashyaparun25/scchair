@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import net from "node:net";
-import { npmCommand, spawnOptions } from "./runtime-env.mjs";
+import { npmCommand, prepareSpawn, spawnOptions } from "./runtime-env.mjs";
 
 const host = "127.0.0.1";
 const preferredApiPort = Number(process.env.API_PORT || 5180);
@@ -42,7 +42,8 @@ async function findFreePort(startPort) {
 }
 
 function start(name, command, args, env = {}) {
-  const child = spawn(command, args, spawnOptions({
+  const prepared = prepareSpawn(command, args);
+  const child = spawn(prepared.command, prepared.args, spawnOptions({
     env: { ...process.env, ...env },
     stdio: ["inherit", "pipe", "pipe"]
   }));
