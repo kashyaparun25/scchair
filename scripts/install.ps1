@@ -90,6 +90,53 @@ function Ensure-RivaClient([string[]]$Py) {
   Log "NVIDIA Riva Python client ready"
 }
 
+function Remove-NodeModulesSafely([string]$TargetDir) {
+  $nodeModules = Join-Path $TargetDir "node_modules"
+  if (-not (Test-Path $nodeModules)) { return }
+
+  Log "Cleaning previous node_modules..."
+  for ($i = 1; $i -le 3; $i++) {
+    try {
+      Remove-Item -Recurse -Force $nodeModules -ErrorAction Stop
+      return
+    } catch {
+      if ($i -lt 3) {
+        Log "Retrying cleanup ($i/3) — close any running scchair/Electron windows first..."
+        Start-Sleep -Seconds 2
+      }
+    }
+  }
+  Fail "Could not remove node_modules (files locked). Close scchair/Electron, then re-run the installer."
+}
+
+function Install-NpmDependencies([string]$TargetDir) {
+  Push-Location $TargetDir
+  try {
+    Remove-NodeModulesSafely $TargetDir
+
+    $maxAttempts = 3
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+      if ($attempt -gt 1) {
+        Log "npm install retry $attempt/$maxAttempts..."
+        Start-Sleep -Seconds 3
+      }
+
+      & npm.cmd install --no-fund --no-audit --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
+      if ($LASTEXITCODE -eq 0) { return }
+
+      if ($attempt -lt $maxAttempts) {
+        Log "npm install failed — cleaning and retrying..."
+        Remove-NodeModulesSafely $TargetDir
+        & npm.cmd cache verify 2>$null | Out-Null
+      }
+    }
+
+    Fail "npm install failed after $maxAttempts attempts. Check your internet connection, then run: cd `"$TargetDir`" ; npm.cmd install --no-fund --no-audit"
+  } finally {
+    Pop-Location
+  }
+}
+
 New-Item -ItemType Directory -Force -Path $InstallRoot, $BinDir | Out-Null
 
 Ensure-Node
@@ -123,14 +170,7 @@ if (-not (Test-Path $AppDir)) {
 }
 
 Log "Installing app dependencies (first run can take a few minutes)..."
-Push-Location $AppDir
-# Use npm.cmd — npm.ps1 is blocked by default PowerShell execution policy on Windows.
-& npm.cmd install --no-fund --no-audit
-if ($LASTEXITCODE -ne 0) {
-  Pop-Location
-  Fail "npm install failed. Try: cd `"$AppDir`" && npm.cmd install"
-}
-Pop-Location
+Install-NpmDependencies $AppDir
 
 @"
 @echo off
