@@ -8,9 +8,17 @@ Works on **macOS** and **Windows**.
 
 ---
 
-## Install (one command)
+## Install (one command — everything automated)
 
-You need [Node.js 20+](https://nodejs.org) installed first (see below).
+The installer automatically sets up:
+
+- **Node.js 20+** (via Homebrew on macOS, winget on Windows)
+- **Python 3** (via Homebrew / winget)
+- **NVIDIA Riva Python client** (`pip install nvidia-riva-client`)
+- **App dependencies** (`npm install`)
+- **`scchair` command** on your PATH
+
+You need **Homebrew** on macOS (`brew`) or **winget** on Windows. Otherwise install Node.js manually first from [nodejs.org](https://nodejs.org).
 
 ### macOS / Linux
 
@@ -23,12 +31,6 @@ curl -fsSL https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/
 ```powershell
 irm https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/install.ps1 | iex
 ```
-
-The installer will:
-
-1. Download Second Chair from GitHub
-2. Install dependencies to `~/.scchair/app` (macOS/Linux) or `%LOCALAPPDATA%\scchair\app` (Windows)
-3. Add a `scchair` command to your PATH
 
 ---
 
@@ -58,44 +60,22 @@ curl -fsSL https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/
 
 ---
 
-## Prerequisites: install Node.js
+## Prerequisites (manual fallback)
 
-The installer needs **Node.js 20 or newer**.
+The installer tries to install everything automatically. If auto-install fails, install manually:
 
-### Check if you already have it
+| Requirement | macOS | Windows |
+|-------------|-------|---------|
+| Node.js 20+ | `brew install node` | [nodejs.org](https://nodejs.org) or `winget install OpenJS.NodeJS.LTS` |
+| Python 3 | `brew install python` | [python.org](https://www.python.org/downloads/) |
+| NVIDIA Riva client | `pip install -U nvidia-riva-client` | same |
 
-```bash
-node --version
-```
-
-You should see `v20.x.x` or higher.
-
-### macOS
+Verify with:
 
 ```bash
-brew install node
-```
-
-Or download the **LTS** build from [nodejs.org](https://nodejs.org).
-
-### Windows
-
-1. Go to [nodejs.org](https://nodejs.org)
-2. Download the **LTS** Windows installer (`.msi`)
-3. Run the installer (keeps default options)
-
-Or:
-
-```powershell
-winget install OpenJS.NodeJS.LTS
-```
-
-### Verify
-
-Open a **new** terminal:
-
-```bash
-node --version
+node --version    # v20+
+python3 --version
+scchair doctor
 ```
 
 ---
@@ -110,14 +90,7 @@ node --version
 
 API keys are stored locally in `.local-data/app-config.json`, not in the cloud.
 
-### Optional: Python 3 (NVIDIA live captions)
-
-| Platform | Install |
-|----------|---------|
-| macOS | `brew install python3` |
-| Windows | [python.org/downloads](https://www.python.org/downloads/) |
-
-OpenAI / Gemini / Claude stacks work without Python. Run `scchair doctor` to verify.
+Run `scchair doctor` anytime to verify Node, Python, and NVIDIA Riva are ready.
 
 ---
 

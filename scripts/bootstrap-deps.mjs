@@ -60,17 +60,45 @@ export function assertNodeVersion() {
 
 export async function detectPython() {
   const candidates = process.platform === "win32"
-    ? [["py", "-3"], ["python"], ["python3"]]
-    : [["python3"], ["python"]];
+    ? [{ command: "py", args: ["-3"] }, { command: "python", args: [] }, { command: "python3", args: [] }]
+    : [{ command: "python3", args: [] }, { command: "python", args: [] }];
 
-  for (const args of candidates) {
-    const cmd = args[0];
-    const { code, stdout } = await runCapture(cmd, [...args.slice(1), "--version"]);
+  for (const candidate of candidates) {
+    const { code, stdout } = await runCapture(candidate.command, [...candidate.args, "--version"]);
     if (code === 0 && stdout.includes("Python")) {
-      return { command: cmd, version: stdout };
+      return { command: candidate.command, args: candidate.args, version: stdout };
     }
   }
   return null;
+}
+
+async function pythonCanImport(python, moduleName) {
+  const { code } = await runCapture(python.command, [
+    ...python.args,
+    "-c",
+    `import ${moduleName}`,
+  ]);
+  return code === 0;
+}
+
+async function ensureNvidiaRivaClient(python) {
+  if (await pythonCanImport(python, "riva.client")) {
+    log("NVIDIA Riva Python client OK");
+    return;
+  }
+
+  log("Installing NVIDIA Riva Python client...");
+  const pipBase = [python.command, ...python.args, "-m", "pip", "install", "-U", "nvidia-riva-client"];
+  let code = await run(pipBase[0], pipBase.slice(1));
+  if (code !== 0) {
+    code = await run(pipBase[0], [...pipBase.slice(1, -1), "--user", "nvidia-riva-client"]);
+  }
+  if (code !== 0 || !(await pythonCanImport(python, "riva.client"))) {
+    warn("Could not auto-install nvidia-riva-client.");
+    warn(`Run: ${python.command} ${python.args.join(" ")} -m pip install -U nvidia-riva-client`);
+    return;
+  }
+  log("NVIDIA Riva Python client ready");
 }
 
 export async function ensureNpmDependencies() {
@@ -118,7 +146,8 @@ export async function bootstrapEnvironment({ requirePython = false } = {}) {
 
   const python = await detectPython();
   if (python) {
-    log(`Python detected (${python.version}). NVIDIA Riva live captions are supported.`);
+    log(`Python detected (${python.version}).`);
+    await ensureNvidiaRivaClient(python);
   } else if (requirePython) {
     fail([
       "Python 3 is required for NVIDIA live captions.",

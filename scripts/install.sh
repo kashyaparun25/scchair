@@ -8,21 +8,18 @@ INSTALL_ROOT="${SCCHAIR_HOME:-$HOME/.scchair}"
 APP_DIR="$INSTALL_ROOT/app"
 BIN_DIR="${SCCHAIR_BIN_DIR:-$HOME/.local/bin}"
 WRAPPER="$BIN_DIR/scchair"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-log() { echo "[scchair] $*"; }
+log() { echo "[scchair] $*" >&2; }
 fail() { echo "[scchair] ERROR: $*" >&2; exit 1; }
 
-# --- Node.js 20+ ---
-if ! command -v node >/dev/null 2>&1; then
-  fail "Node.js is not installed. Install Node.js 20+ from https://nodejs.org"
-fi
-
-NODE_MAJOR="$(node -v | sed 's/^v//' | cut -d. -f1)"
-if [ "$NODE_MAJOR" -lt 20 ] 2>/dev/null; then
-  fail "Node.js 20+ required (found $(node -v)). Install from https://nodejs.org"
-fi
+# shellcheck source=setup-prerequisites.sh
+source "$SCRIPT_DIR/setup-prerequisites.sh"
 
 mkdir -p "$INSTALL_ROOT" "$BIN_DIR"
+
+# --- Node.js, Python, NVIDIA Riva client ---
+run_prerequisite_setup
 
 # --- Download or update ---
 if [ -d "$APP_DIR/.git" ]; then
@@ -47,8 +44,8 @@ if [ ! -d "$APP_DIR" ]; then
   fi
 fi
 
-# --- Dependencies ---
-log "Installing dependencies (first run can take a few minutes)..."
+# --- npm dependencies ---
+log "Installing app dependencies (first run can take a few minutes)..."
 (cd "$APP_DIR" && npm install --no-fund --no-audit)
 
 # --- CLI wrapper ---
@@ -58,30 +55,15 @@ exec node "$APP_DIR/bin/scchair.mjs" "\$@"
 EOF
 chmod +x "$WRAPPER"
 
+ensure_path_entry "$BIN_DIR"
+
 log "Installed to $APP_DIR"
-log "Command: scchair"
-
-# --- PATH ---
-if [[ ":$PATH:" == *":$BIN_DIR:"* ]]; then
-  echo ""
-  echo "Done! Open a new terminal and run:"
-  echo "  scchair"
-else
-  SHELL_RC=""
-  case "${SHELL:-}" in
-    */zsh)  SHELL_RC="$HOME/.zshrc" ;;
-    */bash) SHELL_RC="$HOME/.bashrc" ;;
-  esac
-
-  echo ""
-  echo "Add scchair to your PATH. Run:"
-  echo ""
-  echo "  echo 'export PATH=\"\$HOME/.local/bin:\$PATH\"' >> ${SHELL_RC:-your-shell-profile}"
-  echo "  source ${SHELL_RC:-your-shell-profile}"
-  echo ""
-  echo "Then run:"
-  echo "  scchair"
-  echo ""
-  echo "Or run directly now:"
+echo ""
+echo "Done! Run:"
+echo "  scchair"
+echo ""
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+  echo "If scchair is not found, open a new terminal or run:"
+  echo "  source ~/.zshrc   # or ~/.bashrc"
   echo "  $WRAPPER"
 fi
