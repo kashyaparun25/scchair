@@ -57,10 +57,10 @@ log "Installing app dependencies (first run can take a few minutes)..."
 
 if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then
   log "Electron binary is missing; repairing Electron install..."
-  if ! (cd "$APP_DIR" && npm rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000); then
-    if [ -f "$APP_DIR/node_modules/electron/install.js" ]; then
-      (cd "$APP_DIR" && node node_modules/electron/install.js)
-    fi
+  (cd "$APP_DIR" && npm rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000) || true
+  if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ] && [ -f "$APP_DIR/node_modules/electron/install.js" ]; then
+    log "Running Electron binary downloader..."
+    (cd "$APP_DIR" && node node_modules/electron/install.js)
   fi
 
   if [ ! -f "$APP_DIR/node_modules/electron/path.txt" ]; then

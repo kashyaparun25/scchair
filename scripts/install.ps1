@@ -153,7 +153,8 @@ function Repair-ElectronBinary([string]$TargetDir) {
   Push-Location $TargetDir
   try {
     & npm.cmd rebuild electron --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000
-    if (($LASTEXITCODE -ne 0) -and (Test-Path (Join-Path $electronDir "install.js"))) {
+    if ((-not (Test-Path $pathTxt)) -and (Test-Path (Join-Path $electronDir "install.js"))) {
+      Log "Running Electron binary downloader..."
       & node (Join-Path $electronDir "install.js")
     }
   } finally {

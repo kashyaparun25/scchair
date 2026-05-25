@@ -125,7 +125,8 @@ async function ensureElectronBinary() {
     "--fetch-retry-maxtimeout=120000",
   ]);
 
-  if (code !== 0 && fs.existsSync(path.join(electronDir, "install.js"))) {
+  if (!fs.existsSync(electronPathTxt) && fs.existsSync(path.join(electronDir, "install.js"))) {
+    log("Running Electron binary downloader...");
     code = await run(process.execPath, [path.join(electronDir, "install.js")]);
   }
 
