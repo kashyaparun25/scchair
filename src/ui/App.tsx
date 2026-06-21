@@ -10,19 +10,15 @@ import {
   Database,
   ExternalLink,
   FileText,
-  Gauge,
   History,
   LayoutDashboard,
   ListChecks,
-  MessageCircle,
   Mic2,
   MonitorDot,
   Play,
   Plus,
-  Radio,
   RotateCcw,
   Settings2,
-  SlidersHorizontal,
   Sparkles,
   Target,
   Trash2,
@@ -34,14 +30,11 @@ import {
 import type {
   AnswerDraft,
   AnswerFormat,
-  AuditEvent,
   DocumentSummary,
   LocalProfile,
-  PromptSetting,
   QuestionCard,
   InterviewRound,
   SessionArchiveSummary,
-  SessionMode,
   SessionSetup,
   TranscriptEvent,
   VoiceProfile,
@@ -52,8 +45,7 @@ import {
 } from "../shared/domain";
 import type { SttLanguageMetadata } from "../shared/providerPresets";
 
-type AppPage = "live" | "setup" | "knowledge" | "prompts" | "review" | "settings";
-type AppDrawer = "knowledge" | "prompts" | "review" | "settings" | null;
+type AppDrawer = "knowledge" | "review" | "settings" | null;
 type BrowserSpeechRecognition = {
   continuous: boolean;
   interimResults: boolean;
@@ -190,8 +182,6 @@ interface BootstrapState {
   transcriptEvents: TranscriptEvent[];
   questionCards: QuestionCard[];
   answerDrafts: AnswerDraft[];
-  auditEvents?: AuditEvent[];
-  prompts?: PromptSetting[];
 }
 
 interface SessionReport {
@@ -296,25 +286,6 @@ function languageNoteForStt(metadata: SttLanguageMetadata | null): string {
   return "Language support depends on the selected speech-to-text provider.";
 }
 
-const pageTabs: { id: AppPage; label: string; icon: typeof MessageCircle; shortLabel?: string }[] = [
-  { id: "setup", label: "Setup", shortLabel: "Setup", icon: BriefcaseBusiness },
-  { id: "live", label: "Live", shortLabel: "Live", icon: MessageCircle },
-  { id: "knowledge", label: "Knowledge", shortLabel: "Files", icon: Database },
-  { id: "prompts", label: "Prompts", shortLabel: "Prompts", icon: SlidersHorizontal },
-  { id: "settings", label: "Settings", shortLabel: "Provider", icon: Settings2 },
-  { id: "review", label: "Review", shortLabel: "Review", icon: History }
-];
-
-function sessionContextLabel(session: SessionSetup): string {
-  if (session.mode === "meeting") return session.meetingTopic || "Meeting not set";
-  return session.role || "Role not set";
-}
-
-function sessionPartnerLabel(session: SessionSetup): string {
-  if (session.mode === "meeting") return session.meetingAudience || session.company || "Audience not set";
-  return session.company || "Company not set";
-}
-
 function sessionDisplayName(session: SessionSetup): string {
   if (session.mode === "meeting") return session.meetingTopic || session.title || "Untitled meeting";
   return session.role || session.title || "Untitled interview";
@@ -328,32 +299,26 @@ function answerText(answer: AnswerDraft | null): string {
 }
 
 function App() {
-  const initialPage = getInitialPage();
-  const [activePage, setActivePage] = useState<AppPage>(initialPage);
   const [session, setSession] = useState<SessionSetup>(() => blankSession());
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [questions, setQuestions] = useState<QuestionCard[]>([]);
   const [answerDrafts, setAnswerDrafts] = useState<AnswerDraft[]>([]);
   const [activeProfile, setActiveProfile] = useState<LocalProfile>(() => blankProfile());
   const [profiles, setProfiles] = useState<LocalProfile[]>(() => [blankProfile()]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [transcript, setTranscript] = useState<TranscriptEvent[]>([]);
-  const [mode, setMode] = useState<SessionMode>("interview");
-  const [isLive, setIsLive] = useState(true);
   const [isAnswering, setIsAnswering] = useState(false);
   const [answeringQuestionIds, setAnsweringQuestionIds] = useState<string[]>([]);
   const answeringIdsRef = useRef<Set<string>>(new Set());
   const answerQuestionRef = useRef<(questionId: string) => Promise<void>>(async () => undefined);
   const [liveNotice, setLiveNotice] = useState("");
   const [selectedQuestionId, setSelectedQuestionId] = useState("");
-  const [selectedTranscriptIds, setSelectedTranscriptIds] = useState<string[]>([]);
   const [micEnabled, setMicEnabled] = useState(false);
   const [systemEnabled, setSystemEnabled] = useState(false);
   const [appNotice, setAppNotice] = useState<{ tone: "error" | "info"; message: string } | null>(null);
   const [autoAnswerEnabled, setAutoAnswerEnabled] = useState(true);
   const autoAnsweredIdsRef = useRef<Set<string>>(new Set());
   const [showSetupModal, setShowSetupModal] = useState(true);
-  const [drawer, setDrawer] = useState<AppDrawer>(initialPage === "live" || initialPage === "setup" ? null : initialPage);
+  const [drawer, setDrawer] = useState<AppDrawer>(null);
   const [sttLanguageMetadata, setSttLanguageMetadata] = useState<SttLanguageMetadata | null>(null);
 
   const applyBootstrapState = useCallback((state: BootstrapState) => {
@@ -366,11 +331,9 @@ function App() {
     setProfiles(nextProfiles);
     setDocuments(loadedDocuments);
     setSession({ ...loadedSession, documents: loadedDocuments });
-    setMode(loadedSession.mode || "interview");
     setTranscript(state.transcriptEvents || []);
     setQuestions(state.questionCards || []);
     setAnswerDrafts(state.answerDrafts || []);
-    setAuditEvents(state.auditEvents || []);
     setSelectedQuestionId((current) => {
       const availableQuestions = state.questionCards || [];
       if (current && availableQuestions.some((question) => question.id === current && question.status !== "dismissed")) {
@@ -398,7 +361,6 @@ function App() {
     setAnsweringQuestionIds([]);
     setIsAnswering(false);
     setSelectedQuestionId("");
-    setSelectedTranscriptIds([]);
     setLiveNotice("");
   }, []);
 
@@ -485,14 +447,6 @@ function App() {
   const activeQuestions = useMemo(() => questions.filter((question) => question.status !== "dismissed"), [questions]);
   const selectedQuestion =
     activeQuestions.find((question) => question.id === selectedQuestionId) || activeQuestions[0] || null;
-  const setupReady = session.mode === "meeting"
-    ? Boolean(session.meetingTopic.trim() || session.meetingGoal.trim())
-    : Boolean(session.role.trim() || session.company.trim());
-  const indexedDocumentCount = documents.filter((document) => document.status === "indexed").length;
-  const knowledgeReady = indexedDocumentCount > 0;
-  const liveReady = micEnabled || systemEnabled || transcript.length > 0;
-  const providerReady = true;
-  const reviewReady = questions.length > 0 || answerDrafts.length > 0;
   const languageOptions = useMemo(() => languageOptionsForStt(sttLanguageMetadata), [sttLanguageMetadata]);
   const languageNote = useMemo(() => languageNoteForStt(sttLanguageMetadata), [sttLanguageMetadata]);
 
@@ -501,15 +455,6 @@ function App() {
       setSession((current) => ({ ...current, language: languageOptions[0]?.value || "English" }));
     }
   }, [languageOptions, session.language]);
-  const readinessItems = {
-    setup: setupReady,
-    knowledge: knowledgeReady,
-    settings: providerReady,
-    live: liveReady,
-    review: reviewReady,
-    prompts: true,
-  } satisfies Record<AppPage, boolean>;
-  const readinessScore = [setupReady, knowledgeReady, providerReady, liveReady].filter(Boolean).length;
 
   const queueAutoAnswer = useCallback((detectedQuestions: QuestionCard[]) => {
     if (!autoAnswerEnabled) return;
@@ -705,7 +650,6 @@ function App() {
     setQuestions((current) => current.some((candidate) => candidate.id === question.id) ? current : [...current, question]);
     setSelectedQuestionId(question.id);
     await answerQuestion(question.id);
-    setSelectedTranscriptIds([]);
   }, [answerQuestion]);
 
   const updateQuestionStatus = useCallback(async (questionId: string, status: QuestionCard["status"]) => {
@@ -830,24 +774,12 @@ function App() {
     });
   }, []);
 
-  const openOverlay = () => {
-    if (window.interviewCopilot?.windows?.show) {
-      void window.interviewCopilot.windows.show("overlay");
-      return;
-    }
-    window.open("?view=overlay", "second-chair-overlay", "width=460,height=720,noopener,noreferrer");
-  };
-
   const openAnswerWindow = () => {
     if (window.interviewCopilot?.windows?.show) {
       void window.interviewCopilot.windows.show("answer");
       return;
     }
     window.open("?view=answer", "second-chair-answer", "width=720,height=820,noopener,noreferrer");
-  };
-
-  const hideOverlays = () => {
-    void window.interviewCopilot?.windows?.hideOverlays?.();
   };
 
   return (
@@ -970,12 +902,6 @@ function App() {
               onUploadDocument={uploadDocument}
             />
           )}
-          {drawer === "prompts" && (
-            <PromptStudioPage
-              session={session}
-              onSessionPatch={patchSession}
-            />
-          )}
           {drawer === "settings" && <SettingsPage />}
           {drawer === "review" && <ReviewPage questions={questions} />}
         </UtilityDrawer>
@@ -1014,14 +940,8 @@ function App() {
   );
 }
 
-function getInitialPage(): AppPage {
-  const page = new URLSearchParams(window.location.search).get("page");
-  return pageTabs.some((tab) => tab.id === page) ? (page as AppPage) : "setup";
-}
-
 function drawerLabel(drawer: Exclude<AppDrawer, null>): string {
   if (drawer === "knowledge") return "Knowledge";
-  if (drawer === "prompts") return "Prompt behavior";
   if (drawer === "review") return "Audit and history";
   return "Settings";
 }
@@ -1520,242 +1440,6 @@ function ReferenceAnswerPanel({
   );
 }
 
-function ConsoleSetupRail({
-  documents,
-  languageNote,
-  languageOptions,
-  onAddPastedDocument,
-  onDeleteDocument,
-  onOpenKnowledge,
-  onSessionChange,
-  onStartNewSession,
-  onUploadDocument,
-  readinessScore,
-  session
-}: {
-  documents: DocumentSummary[];
-  languageNote: string;
-  languageOptions: { label: string; value: string }[];
-  onAddPastedDocument: () => Promise<void>;
-  onDeleteDocument: (documentId: string) => Promise<void>;
-  onOpenKnowledge: () => void;
-  onSessionChange: (session: SessionSetup) => void;
-  onStartNewSession: (sessionInput?: Partial<SessionSetup>) => Promise<boolean>;
-  onUploadDocument: (file: File) => Promise<void>;
-  readinessScore: number;
-  session: SessionSetup;
-}) {
-  const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
-  const updateSession = (patch: Partial<SessionSetup>) => {
-    onSessionChange({ ...session, ...patch });
-  };
-  const saveAndStart = async () => {
-    await onStartNewSession(session);
-  };
-
-  return (
-    <aside className="console-setup-rail" aria-label="Session setup">
-      <header className="rail-header">
-        <div>
-          <span className="eyebrow">Session</span>
-          <h2>{session.mode === "meeting" ? "Meeting setup" : "Interview setup"}</h2>
-        </div>
-        <span className="readiness-stat compact" title="Setup readiness">
-          <Gauge size={13} />
-          {readinessScore}/4
-        </span>
-      </header>
-
-      <div className="rail-section">
-        <SegmentedControl
-          label="Mode"
-          value={session.mode}
-          options={[
-            { label: "Interview", value: "interview" },
-            { label: "Meeting", value: "meeting" },
-          ]}
-          onChange={(nextMode) => updateSession({
-            mode: nextMode,
-            title: nextMode === "meeting"
-              ? buildMeetingTitle(session.meetingTopic, session.meetingAudience)
-              : buildSessionTitle(session.role, session.company),
-          })}
-        />
-        {session.mode === "meeting" ? (
-          <>
-            <Field
-              label="Topic"
-              value={session.meetingTopic}
-              onChange={(meetingTopic) => updateSession({
-                meetingTopic,
-                title: buildMeetingTitle(meetingTopic, session.meetingAudience),
-              })}
-            />
-            <Field
-              label="Audience"
-              value={session.meetingAudience}
-              onChange={(meetingAudience) => updateSession({
-                meetingAudience,
-                title: buildMeetingTitle(session.meetingTopic, meetingAudience),
-              })}
-            />
-            <TextAreaField label="Goal" value={session.meetingGoal} onChange={(meetingGoal) => updateSession({ meetingGoal })} />
-          </>
-        ) : (
-          <>
-            <Field
-              label="Target role"
-              value={session.role}
-              onChange={(role) => updateSession({
-                role,
-                title: buildSessionTitle(role, session.company),
-              })}
-            />
-            <Field
-              label="Company"
-              value={session.company}
-              onChange={(company) => updateSession({
-                company,
-                title: buildSessionTitle(session.role, company),
-              })}
-            />
-            <SelectField label="Round" value={session.round} options={roundOptions} onChange={(round) => updateSession({ round })} />
-          </>
-        )}
-      </div>
-
-      <div className="rail-section">
-        <PanelHeader eyebrow="Behavior" icon={<UserRoundCheck size={18} />} title="Answer behavior" />
-        <SelectField
-          label="Response style"
-          value={session.responseStyle}
-          options={responseStyleOptions.map((option) => ({ label: option.title, value: option.value }))}
-          onChange={(responseStyle) => updateSession({ responseStyle })}
-        />
-        <SelectField label="Answer format" value={session.answerFormat} options={formatOptions} onChange={(answerFormat) => updateSession({ answerFormat })} />
-        <PersonaSelector
-          voiceProfile={session.voiceProfile}
-          customVoice={session.customVoice}
-          onChange={(patch) => updateSession(patch)}
-        />
-        <SelectField label="Answer language" value={session.language} options={languageOptions} onChange={(language) => updateSession({ language })} />
-        <p className="persona-note">{languageNote}</p>
-      </div>
-
-      <div className="rail-section">
-        <PanelHeader
-          eyebrow="Knowledge"
-          icon={<Upload size={18} />}
-          title="Materials"
-          action={`${indexedDocuments}/${documents.length}`}
-        />
-        <div className="rail-document-list">
-          {documents.slice(0, 4).map((document) => (
-            <article className="rail-document" key={document.id}>
-              <FileText size={15} />
-              <div>
-                <strong>{document.name}</strong>
-                <span>{documentStatusLabel(document.status)}</span>
-              </div>
-              <button className="icon-action" type="button" aria-label={`Delete ${document.name}`} onClick={() => void onDeleteDocument(document.id)}>
-                <Trash2 size={14} />
-              </button>
-            </article>
-          ))}
-          {!documents.length && <p className="setup-card-hint">Add a resume, JD, notes, or meeting brief to ground answers.</p>}
-        </div>
-        <div className="inline-actions rail-actions">
-          <DocumentUploadButton onUploadDocument={onUploadDocument} compact />
-          <button className="ghost-action compact" type="button" onClick={() => void onAddPastedDocument()}>
-            Paste
-          </button>
-          <button className="ghost-action compact" type="button" onClick={onOpenKnowledge}>
-            All
-          </button>
-        </div>
-      </div>
-
-      <button className="primary-action console-start-button" type="button" onClick={() => void saveAndStart()}>
-        <Play size={17} />
-        Start fresh session
-      </button>
-    </aside>
-  );
-}
-
-function ConsoleAuditRail({
-  answerDrafts,
-  auditEvents,
-  documents,
-  onArchive,
-  questions,
-  transcript
-}: {
-  answerDrafts: AnswerDraft[];
-  auditEvents: AuditEvent[];
-  documents: DocumentSummary[];
-  onArchive: () => void;
-  questions: QuestionCard[];
-  transcript: TranscriptEvent[];
-}) {
-  const answered = questions.filter((question) => question.status === "answered" || question.status === "saved").length;
-  const latestQuestions = [...questions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
-  const latestAuditEvents = auditEvents.slice(0, 4);
-
-  return (
-    <aside className="console-audit-rail" aria-label="Audit timeline">
-      <header className="rail-header">
-        <div>
-          <span className="eyebrow">Audit</span>
-          <h2>Session trace</h2>
-        </div>
-        <button className="ghost-action compact" type="button" onClick={onArchive}>
-          <History size={14} />
-          Open
-        </button>
-      </header>
-      <div className="audit-metric-grid">
-        <Fact label="Questions" value={String(questions.length)} />
-        <Fact label="Answered" value={String(answered)} />
-        <Fact label="Docs" value={String(documents.length)} />
-        <Fact label="Transcript" value={String(transcript.length)} />
-      </div>
-      <div className="audit-timeline">
-        {latestQuestions.map((question) => (
-          <article className="audit-event" key={question.id}>
-            <span className={`status-dot ${question.status}`} />
-            <div>
-              <strong>{question.status}</strong>
-              <p>{question.rawText}</p>
-            </div>
-          </article>
-        ))}
-        {answerDrafts.slice(-3).reverse().map((answer) => (
-          <article className="audit-event" key={answer.id}>
-            <span className="status-dot answered" />
-            <div>
-              <strong>answer {answer.format}</strong>
-              <p>{answer.stages.structured || "Draft created"}</p>
-            </div>
-          </article>
-        ))}
-        {latestAuditEvents.map((event) => (
-          <article className="audit-event" key={event.id}>
-            <span className="status-dot saved" />
-            <div>
-              <strong>{event.eventType.replace(".", " ")}</strong>
-              <p>{event.message}</p>
-            </div>
-          </article>
-        ))}
-        {!questions.length && !answerDrafts.length && !auditEvents.length && (
-          <EmptyState title="No audit events yet" detail="Questions, answers, copies, and archives will appear here." />
-        )}
-      </div>
-    </aside>
-  );
-}
-
 function LiveAssistPage({
   activeQuestions,
   answerDrafts,
@@ -2092,202 +1776,6 @@ function documentStatusLabel(status: DocumentSummary["status"]): string {
   return status;
 }
 
-function SetupPage({
-  documents,
-  onAddPastedDocument,
-  onDeleteDocument,
-  onNotice,
-  onSessionChange,
-  onStart,
-  onStartNewSession,
-  onUploadDocument,
-  session
-}: {
-  documents: DocumentSummary[];
-  onAddPastedDocument: () => Promise<void>;
-  onDeleteDocument: (documentId: string) => Promise<void>;
-  onNotice: (notice: { tone: "error" | "info"; message: string } | null) => void;
-  onSessionChange: (session: SessionSetup) => void;
-  onStart: () => void;
-  onStartNewSession: (sessionInput?: Partial<SessionSetup>) => Promise<boolean>;
-  onUploadDocument: (file: File) => Promise<void>;
-  session: SessionSetup;
-}) {
-  const saveAndStart = async () => {
-    const started = await onStartNewSession(session);
-    if (started) {
-      onStart();
-    }
-  };
-
-  const updateSession = (patch: Partial<SessionSetup>) => {
-    onSessionChange({ ...session, ...patch });
-  };
-  const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
-
-  return (
-    <section className="page-shell" id="page-setup" role="tabpanel" aria-label="Session setup">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">Session Setup</span>
-          <h2>{session.mode === "meeting" ? "Prepare the meeting" : "Prepare the interview"}</h2>
-          <p className="page-lede">{session.title}</p>
-        </div>
-        <button className="primary-action" type="button" onClick={saveAndStart}>
-          <Play size={17} />
-          Start session
-        </button>
-      </div>
-
-      <div className="setup-grid">
-        <section className="setup-card setup-card-primary wide-card">
-          <PanelHeader eyebrow="Context" icon={<Target size={18} />} title={session.mode === "meeting" ? "Meeting context" : "Role and company"} />
-          <SegmentedControl
-            label="Session mode"
-            value={session.mode}
-            options={[
-              { label: "Interview", value: "interview" },
-              { label: "Meeting", value: "meeting" },
-            ]}
-            onChange={(nextMode) => updateSession({
-              mode: nextMode,
-              title: nextMode === "meeting"
-                ? buildMeetingTitle(session.meetingTopic, session.meetingAudience)
-                : buildSessionTitle(session.role, session.company),
-            })}
-          />
-          <div className="field-grid">
-            {session.mode === "meeting" ? (
-              <>
-                <Field
-                  label="Meeting topic"
-                  value={session.meetingTopic}
-                  onChange={(meetingTopic) => updateSession({
-                    meetingTopic,
-                    title: buildMeetingTitle(meetingTopic, session.meetingAudience),
-                  })}
-                />
-                <Field
-                  label="Audience"
-                  value={session.meetingAudience}
-                  onChange={(meetingAudience) => updateSession({
-                    meetingAudience,
-                    title: buildMeetingTitle(session.meetingTopic, meetingAudience),
-                  })}
-                />
-                <Field label="Your role" value={session.role} onChange={(role) => updateSession({ role })} />
-                <Field label="Organization" value={session.company} onChange={(company) => updateSession({ company })} />
-                <TextAreaField
-                  label="Meeting goal"
-                  value={session.meetingGoal}
-                  onChange={(meetingGoal) => updateSession({ meetingGoal })}
-                />
-                <TextAreaField
-                  label="Key notes"
-                  value={session.meetingNotes}
-                  onChange={(meetingNotes) => updateSession({ meetingNotes })}
-                />
-              </>
-            ) : (
-              <>
-                <Field
-                  label="Target role"
-                  value={session.role}
-                  onChange={(role) => updateSession({
-                    role,
-                    title: buildSessionTitle(role, session.company),
-                  })}
-                />
-                <Field
-                  label="Company"
-                  value={session.company}
-                  onChange={(company) => updateSession({
-                    company,
-                    title: buildSessionTitle(session.role, company),
-                  })}
-                />
-                <SelectField
-                  label="Round"
-                  value={session.round}
-                  options={roundOptions}
-                  onChange={(round) => updateSession({ round })}
-                />
-                <Field label="Seniority" value={session.seniority} onChange={(seniority) => updateSession({ seniority })} />
-              </>
-            )}
-          </div>
-        </section>
-        <section className="setup-card wide-card">
-          <PanelHeader
-            eyebrow="Knowledge"
-            icon={<Upload size={18} />}
-            title={session.mode === "meeting" ? "Meeting materials" : "Interview materials"}
-            action={`${indexedDocuments}/${documents.length} indexed`}
-          />
-          <div className="setup-document-grid">
-            {documents.map((document) => (
-              <article className="setup-document" key={document.id}>
-                <FileText size={18} />
-                <div>
-                  <strong>{document.name}</strong>
-                  <span>{document.category.replace("-", " ")} · {document.wordCount.toLocaleString()} words</span>
-                </div>
-                <span className={`doc-status ${document.status}`}>
-                  {document.status === "indexed" && <Check size={13} />}
-                  {documentStatusLabel(document.status)}
-                </span>
-                <button
-                  className="ghost-action compact"
-                  type="button"
-                  aria-label={`Delete ${document.name}`}
-                  onClick={() => void onDeleteDocument(document.id)}
-                >
-                  <Trash2 size={15} />
-                </button>
-              </article>
-            ))}
-            <DocumentImportTile onAddPastedDocument={onAddPastedDocument} onUploadDocument={onUploadDocument} />
-          </div>
-        </section>
-        <section className="setup-card">
-          <PanelHeader eyebrow="Persona" icon={<UserRoundCheck size={18} />} title="Response style" />
-          <div className="preference-list">
-            {responseStyleOptions.map((option) => (
-              <Preference
-                key={option.value}
-                title={option.title}
-                detail={option.detail}
-                active={session.responseStyle === option.value}
-                onClick={() => updateSession({ responseStyle: option.value })}
-              />
-            ))}
-          </div>
-          <div className="setup-style-controls">
-            <ChipGroup
-              label="Answer format"
-              value={session.answerFormat}
-              options={formatOptions}
-              onChange={(answerFormat) => updateSession({ answerFormat })}
-            />
-            <PersonaSelector
-              voiceProfile={session.voiceProfile}
-              customVoice={session.customVoice}
-              onChange={(patch) => updateSession(patch)}
-            />
-          </div>
-        </section>
-        <section className="setup-card">
-          <PanelHeader eyebrow="Capture" icon={<Mic2 size={18} />} title="Audio and language" />
-          <Field label="Spoken language" value={session.language} onChange={(language) => updateSession({ language })} />
-          <p className="setup-card-hint">
-            Microphone and system audio are turned on from the Live tab during the session.
-          </p>
-        </section>
-      </div>
-    </section>
-  );
-}
-
 function KnowledgePage({
   documents,
   onAddPastedDocument,
@@ -2411,114 +1899,6 @@ function DocumentUploadButton({
         }}
       />
     </>
-  );
-}
-
-function PromptStudioPage({
-  session,
-  onSessionPatch,
-}: {
-  session: SessionSetup;
-  onSessionPatch: (patch: Partial<SessionSetup>) => Promise<void>;
-}) {
-  const [prompts, setPrompts] = useState<PromptSetting[]>([]);
-  const [activePromptId, setActivePromptId] = useState<PromptSetting["id"]>("answer-generator");
-  const [draft, setDraft] = useState("");
-  const [saveStatus, setSaveStatus] = useState("");
-  const activePrompt = prompts.find((prompt) => prompt.id === activePromptId) || prompts[0];
-  const draftWordCount = draft.trim() ? draft.trim().split(/\s+/).length : 0;
-  const draftVariableCount = activePrompt?.variables.length || 0;
-
-  useEffect(() => {
-    fetch("/api/prompts")
-      .then(async (response) => (response.ok ? response.json() : Promise.reject(new Error(await apiErrorMessage(response, "Prompt settings are unavailable.")))))
-      .then((items: PromptSetting[]) => {
-        setPrompts(items);
-        setActivePromptId(items[0]?.id || "answer-generator");
-        setDraft(items[0]?.body || "");
-      })
-      .catch((error: unknown) => setSaveStatus(error instanceof Error ? error.message : "Prompt settings are unavailable."));
-  }, []);
-
-  const selectPrompt = (prompt: PromptSetting) => {
-    setActivePromptId(prompt.id);
-    setDraft(prompt.body);
-    setSaveStatus("");
-  };
-  const savePrompt = async () => {
-    if (!activePrompt) return;
-    setSaveStatus("Saving...");
-    const response = await fetch(`/api/prompts/${activePrompt.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ body: draft })
-    });
-    if (!response.ok) {
-      setSaveStatus(await apiErrorMessage(response, "Prompt could not be saved."));
-      return;
-    }
-    const updated = (await response.json()) as PromptSetting;
-    setPrompts((current) => current.map((prompt) => prompt.id === updated.id ? updated : prompt));
-    setSaveStatus("Saved.");
-  };
-
-  return (
-    <section className="page-shell prompt-page" id="page-prompts" role="tabpanel" aria-label="Prompt studio">
-      <div className="page-heading">
-        <div>
-          <span className="eyebrow">Prompts</span>
-          <h2>Prompt Studio</h2>
-          <p className="page-lede">Pick a response persona and edit the system prompts that shape every answer.</p>
-        </div>
-        <button className="primary-action" type="button" onClick={savePrompt} disabled={!activePrompt}>
-          <Check size={17} />
-          Save prompt
-        </button>
-      </div>
-
-      <div className="prompt-grid">
-        <section className="prompt-library">
-          <PanelHeader eyebrow="Personas" icon={<Settings2 size={18} />} title="Answer personas" />
-          <PersonaSelector
-            voiceProfile={session.voiceProfile}
-            customVoice={session.customVoice}
-            onChange={(patch) => void onSessionPatch(patch)}
-          />
-        </section>
-        <section className="prompt-editor">
-          <PanelHeader eyebrow="System prompt" icon={<SlidersHorizontal size={18} />} title="Prompt template" />
-          <div className="prompt-switcher" aria-label="Prompt template">
-            {prompts.map((prompt) => (
-              <button
-                className={activePromptId === prompt.id ? "active" : ""}
-                key={prompt.id}
-                type="button"
-                onClick={() => selectPrompt(prompt)}
-              >
-                {prompt.title}
-              </button>
-            ))}
-          </div>
-          <div className="prompt-meta-strip" aria-label="Prompt statistics">
-            <Fact label="Words" value={draftWordCount.toLocaleString()} />
-            <Fact label="Variables" value={draftVariableCount.toLocaleString()} />
-            <Fact label="Template" value={activePrompt?.title || "Loading"} />
-          </div>
-          <textarea
-            className="prompt-textarea"
-            aria-label="System prompt"
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <div className="variable-row">
-            {(activePrompt?.variables || []).map((variable) => (
-              <span key={variable}>{variable}</span>
-            ))}
-          </div>
-          {saveStatus && <p className="live-notice" role="status">{saveStatus}</p>}
-        </section>
-      </div>
-    </section>
   );
 }
 
