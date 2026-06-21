@@ -44,6 +44,10 @@ export interface SessionSetup {
   company: string;
   round: InterviewRound;
   seniority: string;
+  meetingTopic: string;
+  meetingAudience: string;
+  meetingGoal: string;
+  meetingNotes: string;
   responseStyle: "concise" | "balanced" | "detailed" | "executive" | "conversational";
   language: string;
   voiceProfile: VoiceProfile;

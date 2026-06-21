@@ -80,6 +80,9 @@ function renderSessionMarkdown(state: ReturnType<typeof repository.snapshot>): s
     `- Role: ${session.role || "Not set"}`,
     `- Company: ${session.company || "Not set"}`,
     `- Round: ${session.round}`,
+    `- Meeting topic: ${session.meetingTopic || "Not set"}`,
+    `- Meeting audience: ${session.meetingAudience || "Not set"}`,
+    `- Meeting goal: ${session.meetingGoal || "Not set"}`,
     `- Documents: ${state.documents.length}`,
     `- Questions: ${state.questionCards.length}`,
     "",
@@ -224,6 +227,14 @@ function buildSessionTitle(role = "", company = ""): string {
   return "Interview session";
 }
 
+function buildMeetingTitle(topic = "", audience = ""): string {
+  const trimmedTopic = topic.trim();
+  const trimmedAudience = audience.trim();
+  if (trimmedTopic && trimmedAudience) return `${trimmedTopic} with ${trimmedAudience}`;
+  if (trimmedTopic) return trimmedTopic;
+  return "Meeting session";
+}
+
 function isVoiceProfile(value: unknown): value is VoiceProfile {
   return typeof value === "string" && [
     "product-lead",
@@ -250,14 +261,21 @@ function isAnswerFormat(value: unknown): value is AnswerFormat {
 function mergeSessionInput(existing: SessionSetup | null, input: Record<string, unknown>): SessionSetup {
   const role = String(input.role ?? existing?.role ?? "");
   const company = String(input.company ?? existing?.company ?? "");
+  const mode = input.mode === "meeting" ? "meeting" : "interview";
+  const meetingTopic = String(input.meetingTopic ?? existing?.meetingTopic ?? "");
+  const meetingAudience = String(input.meetingAudience ?? existing?.meetingAudience ?? "");
   return {
     id: existing?.id || makeId("session"),
-    mode: input.mode === "meeting" ? "meeting" : "interview",
-    title: String(input.title || buildSessionTitle(role, company)),
+    mode,
+    title: String(input.title || (mode === "meeting" ? buildMeetingTitle(meetingTopic, meetingAudience) : buildSessionTitle(role, company))),
     role,
     company,
     round: (input.round as SessionSetup["round"]) || existing?.round || "hiring-manager",
     seniority: String(input.seniority ?? existing?.seniority ?? ""),
+    meetingTopic,
+    meetingAudience,
+    meetingGoal: String(input.meetingGoal ?? existing?.meetingGoal ?? ""),
+    meetingNotes: String(input.meetingNotes ?? existing?.meetingNotes ?? ""),
     responseStyle: (input.responseStyle as SessionSetup["responseStyle"]) || existing?.responseStyle || "balanced",
     language: String(input.language ?? existing?.language ?? "English"),
     voiceProfile: isVoiceProfile(input.voiceProfile) ? input.voiceProfile : existing?.voiceProfile || "staff-engineer",
@@ -298,11 +316,19 @@ app.post("/api/sessions/start", (req, res) => {
   const session = mergeSessionInput(null, {
     ...input,
     id: makeId("session"),
-    title: input.title || buildSessionTitle(String(input.role || existingSession?.role || ""), String(input.company || existingSession?.company || "")),
+    title: input.title || (
+      input.mode === "meeting"
+        ? buildMeetingTitle(String(input.meetingTopic || existingSession?.meetingTopic || ""), String(input.meetingAudience || existingSession?.meetingAudience || ""))
+        : buildSessionTitle(String(input.role || existingSession?.role || ""), String(input.company || existingSession?.company || ""))
+    ),
     role: input.role ?? existingSession?.role ?? "",
     company: input.company ?? existingSession?.company ?? "",
     round: input.round ?? existingSession?.round ?? "hiring-manager",
     seniority: input.seniority ?? existingSession?.seniority ?? "",
+    meetingTopic: input.meetingTopic ?? existingSession?.meetingTopic ?? "",
+    meetingAudience: input.meetingAudience ?? existingSession?.meetingAudience ?? "",
+    meetingGoal: input.meetingGoal ?? existingSession?.meetingGoal ?? "",
+    meetingNotes: input.meetingNotes ?? existingSession?.meetingNotes ?? "",
     responseStyle: input.responseStyle ?? existingSession?.responseStyle ?? "balanced",
     language: input.language ?? existingSession?.language ?? "English",
     voiceProfile: input.voiceProfile ?? existingSession?.voiceProfile ?? "staff-engineer",

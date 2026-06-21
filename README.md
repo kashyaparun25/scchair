@@ -2,7 +2,7 @@
 
 **Second Chair** is your private, local-first interview and meeting copilot. It listens to live conversation, spots questions, and drafts grounded answers from your resume, notes, and job materials — all on your machine.
 
-Works on **macOS** and **Windows**.
+Works on **macOS**, **Windows**, and common **Linux** desktop distributions.
 
 **No npm account. No GitHub account. No signup.**
 
@@ -12,13 +12,13 @@ Works on **macOS** and **Windows**.
 
 The installer automatically sets up:
 
-- **Node.js 20+** (via Homebrew on macOS, winget on Windows)
-- **Python 3** (via Homebrew / winget)
+- **Node.js 20+** (via Homebrew on macOS, Linux package managers/NodeSource on Linux, winget on Windows)
+- **Python 3** (via Homebrew, Linux package managers, or winget)
 - **NVIDIA Riva Python client** (`pip install nvidia-riva-client`)
 - **App dependencies** (`npm install`)
 - **`scchair` command** on your PATH
 
-You need **Homebrew** on macOS (`brew`) or **winget** on Windows. Otherwise install Node.js manually first from [nodejs.org](https://nodejs.org).
+You need **Homebrew** on macOS (`brew`), a common Linux package manager (`apt`, `dnf`, `yum`, or `pacman`), or **winget** on Windows. Otherwise install Node.js manually first from [nodejs.org](https://nodejs.org).
 
 ### macOS / Linux
 
@@ -64,11 +64,12 @@ curl -fsSL https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/
 
 The installer tries to install everything automatically. If auto-install fails, install manually:
 
-| Requirement | macOS | Windows |
-|-------------|-------|---------|
-| Node.js 20+ | `brew install node` | [nodejs.org](https://nodejs.org) or `winget install OpenJS.NodeJS.LTS` |
-| Python 3 | `brew install python` | [python.org](https://www.python.org/downloads/) |
-| NVIDIA Riva client | `pip install -U nvidia-riva-client` | same |
+| Requirement | macOS | Linux | Windows |
+|-------------|-------|-------|---------|
+| Node.js 20+ | `brew install node` | [nodejs.org](https://nodejs.org) or distro packages with Node 20+ | [nodejs.org](https://nodejs.org) or `winget install OpenJS.NodeJS.LTS` |
+| Python 3 | `brew install python` | `sudo apt install python3 python3-pip` or equivalent | [python.org](https://www.python.org/downloads/) |
+| Native build tools | Xcode Command Line Tools | `sudo apt install build-essential` or equivalent | Visual Studio Build Tools if native rebuilds fail |
+| NVIDIA Riva client | `pip install -U nvidia-riva-client` | same | same |
 
 Verify with:
 

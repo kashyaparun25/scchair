@@ -4,6 +4,10 @@ import { npmCommand, prepareSpawn, runtimeEnv, spawnOptions } from "../scripts/r
 
 const uiUrl = runtimeEnv("DEV_SERVER_URL", "http://127.0.0.1:5174");
 const apiUrl = runtimeEnv("API_HEALTH_URL", "http://127.0.0.1:5180/api/bootstrap");
+const surfaceArgIndex = process.argv.findIndex((arg) => arg === "--surface");
+const startupSurface = surfaceArgIndex >= 0 && process.argv[surfaceArgIndex + 1]
+  ? process.argv[surfaceArgIndex + 1]
+  : runtimeEnv("STARTUP_SURFACE", "");
 const children = new Map();
 let shuttingDown = false;
 
@@ -91,6 +95,11 @@ process.on("SIGINT", () => shutdown(0));
 process.on("SIGTERM", () => shutdown(0));
 
 const npm = npmCommand();
+const electronEnv = {
+  SECOND_CHAIR_DEV_SERVER_URL: uiUrl,
+  INTERVIEW_COPILOT_DEV_SERVER_URL: uiUrl,
+  ...(startupSurface ? { SECOND_CHAIR_STARTUP_SURFACE: startupSurface } : {}),
+};
 
 try {
   const existingApiReady = await isUrlReady(apiUrl);
@@ -98,10 +107,7 @@ try {
 
   if (existingApiReady && existingUiReady) {
     console.log(`Using existing dev services at ${uiUrl}`);
-    start("electron", npm, ["run", "electron"], {
-      SECOND_CHAIR_DEV_SERVER_URL: uiUrl,
-      INTERVIEW_COPILOT_DEV_SERVER_URL: uiUrl,
-    });
+    start("electron", npm, ["run", "electron"], electronEnv);
   } else {
   await Promise.all([
     assertPortFree(apiUrl, "Local API"),
@@ -115,10 +121,7 @@ try {
     waitForUrl(apiUrl, "local API"),
     waitForUrl(uiUrl, "Vite UI")
   ]);
-  start("electron", npm, ["run", "electron"], {
-    SECOND_CHAIR_DEV_SERVER_URL: uiUrl,
-    INTERVIEW_COPILOT_DEV_SERVER_URL: uiUrl,
-  });
+  start("electron", npm, ["run", "electron"], electronEnv);
   }
 } catch (error) {
   console.error(error.message);

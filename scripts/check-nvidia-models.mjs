@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { execFile as execFileCallback } from "node:child_process";
 import { existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execFile = promisify(execFileCallback);
@@ -51,10 +53,20 @@ async function checkLlm(apiKey) {
 }
 
 async function ensureSpeechFixture() {
-  const wavPath = "/private/tmp/second-chair-nvidia-test.wav";
+  const configured = process.env.NVIDIA_TEST_AUDIO_FILE;
+  if (configured) {
+    if (!existsSync(configured)) throw new Error(`NVIDIA_TEST_AUDIO_FILE does not exist: ${configured}`);
+    return configured;
+  }
+
+  const wavPath = join(tmpdir(), "second-chair-nvidia-test.wav");
   if (existsSync(wavPath)) return wavPath;
 
-  const aiffPath = "/private/tmp/second-chair-nvidia-test.aiff";
+  if (process.platform !== "darwin") {
+    throw new Error("Set NVIDIA_TEST_AUDIO_FILE to a 16 kHz mono WAV file to run the STT diagnostic on this platform.");
+  }
+
+  const aiffPath = join(tmpdir(), "second-chair-nvidia-test.aiff");
   await execFile("say", [
     "-o",
     aiffPath,
@@ -81,7 +93,9 @@ async function ensureSpeechFixture() {
 async function checkStt(audioPath) {
   const started = Date.now();
   try {
-    const { stdout } = await execFile(process.env.NVIDIA_RIVA_PYTHON || "python3", [
+    const python = splitCommand(process.env.NVIDIA_RIVA_PYTHON || defaultPythonCommand());
+    const { stdout } = await execFile(python.command, [
+      ...python.args,
       "scripts/nvidia-riva-asr.py",
       "--input-file",
       audioPath,
@@ -105,6 +119,18 @@ async function checkStt(audioPath) {
       error: processErrorMessage(error),
     };
   }
+}
+
+function defaultPythonCommand() {
+  return process.platform === "win32" ? "py -3" : "python3";
+}
+
+function splitCommand(commandLine) {
+  const parts = String(commandLine || "").split(/\s+/).filter(Boolean);
+  return {
+    command: parts[0] || defaultPythonCommand(),
+    args: parts.slice(1),
+  };
 }
 
 function lastJsonLine(output) {

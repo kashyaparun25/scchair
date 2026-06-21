@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 /**
  * @typedef {"main" | "overlay" | "answer"} DesktopWindowRole
- * @typedef {"shortcut:toggleOverlay" | "shortcut:toggleAnswer" | "shortcut:captureScreenshot" | "shortcut:hideOverlays" | "server:status"} DesktopEventChannel
+ * @typedef {"shortcut:toggleOverlay" | "shortcut:toggleAnswer" | "shortcut:captureScreenshot" | "shortcut:hideOverlays" | "shortcut:toggleVisibility" | "shortcut:toggleInteraction" | "server:status" | "stealth:changed"} DesktopEventChannel
  * @typedef {{ isPackaged: boolean, platform: string, versions: { chrome: string, electron: string }, api: { baseUrl: string, healthUrl: string, managed: boolean }, shortcuts: Record<string, string> }} AppInfo
  * @typedef {{ id: string, name: string, thumbnail?: string, dataUrl?: string, appIcon: string | null }} CaptureSource
  */
@@ -12,7 +12,10 @@ const eventChannels = new Set([
   "shortcut:toggleAnswer",
   "shortcut:captureScreenshot",
   "shortcut:hideOverlays",
-  "server:status"
+  "shortcut:toggleVisibility",
+  "shortcut:toggleInteraction",
+  "server:status",
+  "stealth:changed"
 ]);
 
 function assertEventChannel(channel) {
@@ -42,6 +45,16 @@ const api = Object.freeze({
     listSources: () => ipcRenderer.invoke("capture:listSources"),
     /** @param {{ sourceId?: string }} [options] @returns {Promise<CaptureSource>} */
     screenshot: (options = {}) => ipcRenderer.invoke("capture:screenshot", options)
+  }),
+
+  stealth: Object.freeze({
+    /** @returns {Promise<{ config: any, personas: any[], shortcuts: Record<string, string>, overlayClickThrough: boolean }>} */
+    get: () => ipcRenderer.invoke("stealth:get"),
+    /** @param {Partial<{ enabled: boolean, persona: string, defaultClickThrough: boolean, autoHideOnBlur: boolean }>} patch */
+    update: (patch) => ipcRenderer.invoke("stealth:update", patch || {}),
+    /** @param {boolean} enabled */
+    setClickThrough: (enabled) => ipcRenderer.invoke("stealth:setClickThrough", enabled),
+    panic: () => ipcRenderer.invoke("stealth:panic")
   }),
 
   shortcuts: Object.freeze({

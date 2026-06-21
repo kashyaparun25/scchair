@@ -18,14 +18,39 @@ ensure_node() {
   log "Installing Node.js 20+..."
   if command -v brew >/dev/null 2>&1; then
     brew install node
-  elif command -v winget >/dev/null 2>&1; then
-    winget install --id OpenJS.NodeJS.LTS -e --accept-source-agreements --accept-package-agreements
+  elif command -v apt-get >/dev/null 2>&1; then
+    run_as_root apt-get update
+    run_as_root apt-get install -y ca-certificates curl gnupg build-essential
+    curl -fsSL https://deb.nodesource.com/setup_20.x | run_as_root bash -
+    run_as_root apt-get install -y nodejs build-essential
+  elif command -v dnf >/dev/null 2>&1; then
+    run_as_root dnf install -y nodejs npm gcc-c++ make
+  elif command -v yum >/dev/null 2>&1; then
+    run_as_root yum install -y nodejs npm gcc-c++ make
+  elif command -v pacman >/dev/null 2>&1; then
+    run_as_root pacman -Sy --needed --noconfirm nodejs npm base-devel
   else
     fail "Install Node.js 20+ from https://nodejs.org then re-run the installer."
   fi
 
   if ! command -v node >/dev/null 2>&1; then
     fail "Node.js install finished but node is not on PATH. Open a new terminal and re-run the installer."
+  fi
+
+  local installed_major
+  installed_major="$(node -v | sed 's/^v//' | cut -d. -f1)"
+  if [ "$installed_major" -lt 20 ] 2>/dev/null; then
+    fail "Node.js $(node -v) was installed, but Second Chair requires Node.js 20+. Install Node.js 20+ from https://nodejs.org and re-run."
+  fi
+}
+
+run_as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo "$@"
+  else
+    fail "This install step needs administrator privileges. Install sudo or run as root: $*"
   fi
 }
 
@@ -52,8 +77,15 @@ ensure_python() {
   log "Installing Python 3..."
   if command -v brew >/dev/null 2>&1; then
     brew install python
-  elif command -v winget >/dev/null 2>&1; then
-    winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements
+  elif command -v apt-get >/dev/null 2>&1; then
+    run_as_root apt-get update
+    run_as_root apt-get install -y python3 python3-pip python3-venv
+  elif command -v dnf >/dev/null 2>&1; then
+    run_as_root dnf install -y python3 python3-pip
+  elif command -v yum >/dev/null 2>&1; then
+    run_as_root yum install -y python3 python3-pip
+  elif command -v pacman >/dev/null 2>&1; then
+    run_as_root pacman -Sy --needed --noconfirm python python-pip
   else
     fail "Install Python 3 from https://www.python.org/downloads/ then re-run the installer."
   fi

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Copy, ExternalLink, EyeOff, Pin, RefreshCw, Sparkles, WandSparkles, X } from "lucide-react";
+import { Check, Copy, ExternalLink, EyeOff, GripHorizontal, Pin, RefreshCw, Sparkles, WandSparkles, X } from "lucide-react";
 import type { AnswerDraft, AnswerFormat, DocumentSummary, QuestionCard, SessionSetup, TranscriptEvent } from "../shared/domain";
 
 type DesktopWindowApi = Window & {
@@ -185,9 +185,12 @@ function AnswerWindow() {
   return (
     <main className="answer-window-shell" aria-label="Detached answer window">
       <header className="answer-window-header">
-        <div>
-          <span className="eyebrow">Detached answer</span>
-          <h1>{state.session?.title || "Second Chair"}</h1>
+        <div className="answer-window-header-title">
+          <GripHorizontal size={16} className="answer-window-drag-handle" aria-hidden="true" />
+          <div>
+            <span className="eyebrow">Detached answer</span>
+            <h1>{state.session?.title || "Second Chair"}</h1>
+          </div>
         </div>
         <div className="answer-window-actions">
           <button className="icon-button" type="button" title="Refresh" aria-label="Refresh latest answer" onClick={() => void refresh()}>

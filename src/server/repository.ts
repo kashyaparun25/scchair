@@ -670,6 +670,10 @@ function migrate(db: Database.Database): void {
           company TEXT NOT NULL,
           round TEXT NOT NULL,
           seniority TEXT NOT NULL,
+          meeting_topic TEXT NOT NULL DEFAULT '',
+          meeting_audience TEXT NOT NULL DEFAULT '',
+          meeting_goal TEXT NOT NULL DEFAULT '',
+          meeting_notes TEXT NOT NULL DEFAULT '',
           response_style TEXT NOT NULL,
           language TEXT NOT NULL
         );
@@ -881,6 +885,27 @@ function migrate(db: Database.Database): void {
       db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(8, Date.now());
     })();
   }
+
+  if (currentVersion < 9) {
+    db.transaction(() => {
+      const columns = new Set(
+        (db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((column) => column.name),
+      );
+      if (!columns.has("meeting_topic")) {
+        db.exec("ALTER TABLE sessions ADD COLUMN meeting_topic TEXT NOT NULL DEFAULT '';");
+      }
+      if (!columns.has("meeting_audience")) {
+        db.exec("ALTER TABLE sessions ADD COLUMN meeting_audience TEXT NOT NULL DEFAULT '';");
+      }
+      if (!columns.has("meeting_goal")) {
+        db.exec("ALTER TABLE sessions ADD COLUMN meeting_goal TEXT NOT NULL DEFAULT '';");
+      }
+      if (!columns.has("meeting_notes")) {
+        db.exec("ALTER TABLE sessions ADD COLUMN meeting_notes TEXT NOT NULL DEFAULT '';");
+      }
+      db.prepare("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(9, Date.now());
+    })();
+  }
 }
 
 function ensureDefaultPrompts(db: Database.Database): void {
@@ -958,11 +983,13 @@ function insertSession(db: Database.Database, session: SessionSetup): void {
   const normalized = normalizeSessionSetup(session);
   db.prepare(`
     INSERT INTO sessions (
-      singleton_id, id, mode, title, role, company, round, seniority, response_style, language,
+      singleton_id, id, mode, title, role, company, round, seniority,
+      meeting_topic, meeting_audience, meeting_goal, meeting_notes, response_style, language,
       voice_profile, custom_voice, answer_format
     )
     VALUES (
-      1, @id, @mode, @title, @role, @company, @round, @seniority, @responseStyle, @language,
+      1, @id, @mode, @title, @role, @company, @round, @seniority,
+      @meetingTopic, @meetingAudience, @meetingGoal, @meetingNotes, @responseStyle, @language,
       @voiceProfile, @customVoice, @answerFormat
     )
     ON CONFLICT(singleton_id) DO UPDATE SET
@@ -973,6 +1000,10 @@ function insertSession(db: Database.Database, session: SessionSetup): void {
       company = excluded.company,
       round = excluded.round,
       seniority = excluded.seniority,
+      meeting_topic = excluded.meeting_topic,
+      meeting_audience = excluded.meeting_audience,
+      meeting_goal = excluded.meeting_goal,
+      meeting_notes = excluded.meeting_notes,
       response_style = excluded.response_style,
       language = excluded.language,
       voice_profile = excluded.voice_profile,
@@ -1256,6 +1287,10 @@ function readSession(db: Database.Database): SessionSetup | null {
     company: row.company,
     round: row.round as SessionSetup["round"],
     seniority: row.seniority,
+    meetingTopic: row.meeting_topic || "",
+    meetingAudience: row.meeting_audience || "",
+    meetingGoal: row.meeting_goal || "",
+    meetingNotes: row.meeting_notes || "",
     responseStyle: row.response_style as SessionSetup["responseStyle"],
     language: row.language,
     voiceProfile: (row.voice_profile || "staff-engineer") as SessionSetup["voiceProfile"],
@@ -1268,6 +1303,10 @@ function readSession(db: Database.Database): SessionSetup | null {
 function normalizeSessionSetup(session: SessionSetup): SessionSetup {
   return {
     ...session,
+    meetingTopic: session.meetingTopic || "",
+    meetingAudience: session.meetingAudience || "",
+    meetingGoal: session.meetingGoal || "",
+    meetingNotes: session.meetingNotes || "",
     voiceProfile: session.voiceProfile || "staff-engineer",
     customVoice: session.customVoice || "",
     answerFormat: session.answerFormat || "technical",
@@ -1635,6 +1674,10 @@ interface SessionRow {
   company: string;
   round: string;
   seniority: string;
+  meeting_topic?: string;
+  meeting_audience?: string;
+  meeting_goal?: string;
+  meeting_notes?: string;
   response_style: string;
   language: string;
   voice_profile?: string;

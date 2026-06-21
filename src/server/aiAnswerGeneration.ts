@@ -449,6 +449,7 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
   })) ?? [];
 
   const profileLine = profileInstruction(input.responseProfile);
+  const modeLine = modeInstruction(input.session);
   const roundLine = roundInstruction(input.session.round);
   const responseStyleLine = responseStyleInstruction(input.session.responseStyle);
   const formatLine = formatInstruction(input.format);
@@ -459,7 +460,8 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
   return {
     system: [
       "You are Second Chair, a private real-time interview copilot.",
-      "Write ONLY the exact words the candidate should say out loud in the interview.",
+      "Write ONLY the exact words the user should say out loud in the live conversation.",
+      modeLine,
       profileLine,
       roundLine,
       responseStyleLine,
@@ -469,7 +471,7 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
       input.continuity?.instruction,
       "Rules:",
       "- First person only (I, my, we). Sound natural and conversational.",
-      "- 80-140 words. Be concise — this is live interview assistance.",
+      "- 80-140 words. Be concise — this is live assistance.",
       "- Start answering immediately. No preamble like 'Great question' unless it fits naturally.",
       "- Never use placeholders, brackets, blanks, em dashes to fill in, or instructions like 'mention X here'.",
       "- Never explain how to answer. Never say 'I would frame this as' or 'fill in the blank'.",
@@ -489,6 +491,10 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
         company: input.session.company,
         round: input.session.round,
         seniority: input.session.seniority,
+        meetingTopic: input.session.meetingTopic,
+        meetingAudience: input.session.meetingAudience,
+        meetingGoal: input.session.meetingGoal,
+        meetingNotes: input.session.meetingNotes,
         responseStyle: input.session.responseStyle,
         language: input.session.language,
         voiceProfile: input.session.voiceProfile,
@@ -511,6 +517,22 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
       retrievedContext: context,
     }),
   };
+}
+
+function modeInstruction(session: GenerateAnswerInput["session"]): string {
+  if (session.mode !== "meeting") {
+    return "Mode: interview — help the candidate answer interviewer questions clearly and truthfully.";
+  }
+  const context = [
+    session.meetingTopic ? `topic: ${session.meetingTopic}` : "",
+    session.meetingAudience ? `audience: ${session.meetingAudience}` : "",
+    session.meetingGoal ? `goal: ${session.meetingGoal}` : "",
+  ].filter(Boolean).join("; ");
+  return [
+    "Mode: meeting — help the user respond as a prepared participant, not as an interview candidate.",
+    context ? `Meeting context: ${context}.` : "",
+    session.meetingNotes ? `Meeting notes: ${session.meetingNotes}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 function profileInstruction(profile?: string): string {

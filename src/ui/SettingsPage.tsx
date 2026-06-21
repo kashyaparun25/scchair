@@ -16,6 +16,7 @@ import {
 } from "../shared/providerPresets";
 import { apiKeyGuideForEndpoint } from "../shared/apiKeyGuides";
 import { ApiKeyGuideCard } from "./ApiKeyGuideCard";
+import { StealthPanel } from "./StealthPanel";
 
 type SettingsPayload = {
   config: AppConfigPublic;
@@ -157,7 +158,7 @@ export function SettingsPage() {
           <span className="eyebrow">Settings</span>
           <h2>Settings</h2>
           <p className="page-lede">
-            NVIDIA is the default setup. Pick another provider if you prefer, paste your API key, and save.
+            Pick a provider and paste your API key. Keys stay on your machine.
           </p>
         </div>
         <button className="primary-action" type="button" onClick={() => void saveSettings()} disabled={isSaving}>
@@ -192,7 +193,7 @@ export function SettingsPage() {
 
         <section className="settings-section settings-section-wide">
           <PanelHeader eyebrow="Credentials" icon={<KeyRound size={18} />} title="API keys" />
-          <p className="settings-note">Keys stay on your machine. Leave a field blank to keep the saved key.</p>
+          <p className="settings-note">Leave a field blank to keep the saved key.</p>
           <div className="api-keys-grid">
             {preset.keys.map((keyField) => {
               const preview = endpointPreviews.get(keyField.endpointId);
@@ -231,6 +232,8 @@ export function SettingsPage() {
             <li><span>Document search</span><strong>{resolvedModels.embeddings}</strong></li>
           </ul>
         </section>
+
+        <StealthPanel />
 
         <section className="settings-section settings-section-wide">
           <button

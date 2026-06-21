@@ -5,35 +5,27 @@ import { ApiKeyGuideCard } from "./ApiKeyGuideCard";
 import { DEFAULT_API_KEY_GUIDE } from "../shared/apiKeyGuides";
 import {
   AudioWaveform,
-  Bookmark,
-  Bot,
   BriefcaseBusiness,
   Check,
-  CheckSquare,
-  ChevronRight,
-  ClipboardList,
   Copy,
   Database,
   ExternalLink,
   EyeOff,
   FileText,
+  Gauge,
   History,
   LayoutDashboard,
   ListChecks,
   MessageCircle,
   Mic2,
   MonitorDot,
-  Pause,
-  Pin,
   Play,
   Radio,
   RotateCcw,
-  Search,
-  Send,
   Settings2,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Target,
   Trash2,
   Upload,
   UserRoundCheck,
@@ -73,6 +65,27 @@ type BrowserSpeechRecognitionEvent = {
   }>;
 };
 
+type StealthPersona = {
+  id: string;
+  label: string;
+  processTitle: string;
+  appName: string;
+};
+
+type StealthConfig = {
+  enabled: boolean;
+  persona: string;
+  defaultClickThrough: boolean;
+  autoHideOnBlur: boolean;
+};
+
+type StealthInfo = {
+  config: StealthConfig;
+  personas: StealthPersona[];
+  shortcuts: Record<string, string>;
+  overlayClickThrough: boolean;
+};
+
 declare global {
   interface Window {
     SpeechRecognition?: new () => BrowserSpeechRecognition;
@@ -88,10 +101,27 @@ declare global {
       capture?: {
         screenshot: (options?: { sourceId?: string }) => Promise<{ dataUrl: string; name: string; id: string }>;
       };
+      stealth?: {
+        get: () => Promise<StealthInfo>;
+        update: (patch: Partial<StealthConfig>) => Promise<{ config: StealthConfig; overlayClickThrough: boolean }>;
+        setClickThrough: (enabled: boolean) => Promise<{ clickThrough: boolean }>;
+        panic: () => Promise<{ visible: boolean }>;
+      };
       shortcuts?: {
-        on: (channel: "shortcut:captureScreenshot" | "shortcut:toggleAnswer" | "shortcut:toggleOverlay" | "shortcut:hideOverlays", listener: (payload: unknown) => void) => () => void;
+        on: (
+          channel:
+            | "shortcut:captureScreenshot"
+            | "shortcut:toggleAnswer"
+            | "shortcut:toggleOverlay"
+            | "shortcut:hideOverlays"
+            | "shortcut:toggleVisibility"
+            | "shortcut:toggleInteraction"
+            | "stealth:changed",
+          listener: (payload: unknown) => void
+        ) => () => void;
       };
     };
+    secondChair?: Window["interviewCopilot"];
   }
 }
 
@@ -127,6 +157,14 @@ function buildSessionTitle(role: string, company: string): string {
   if (trimmedRole && trimmedCompany) return `${trimmedRole} @ ${trimmedCompany}`;
   if (trimmedRole) return trimmedRole;
   return "Interview session";
+}
+
+function buildMeetingTitle(topic: string, audience: string): string {
+  const trimmedTopic = topic.trim();
+  const trimmedAudience = audience.trim();
+  if (trimmedTopic && trimmedAudience) return `${trimmedTopic} with ${trimmedAudience}`;
+  if (trimmedTopic) return trimmedTopic;
+  return "Meeting session";
 }
 
 const roundOptions: { label: string; value: InterviewRound }[] = [
@@ -209,6 +247,10 @@ function blankSession(documents: DocumentSummary[] = []): SessionSetup {
     company: "",
     round: "hiring-manager",
     seniority: "",
+    meetingTopic: "",
+    meetingAudience: "",
+    meetingGoal: "",
+    meetingNotes: "",
     responseStyle: "balanced",
     language: "English",
     voiceProfile: "staff-engineer",
@@ -218,14 +260,24 @@ function blankSession(documents: DocumentSummary[] = []): SessionSetup {
   };
 }
 
-const pageTabs: { id: AppPage; label: string; icon: typeof MessageCircle; description: string }[] = [
-  { id: "setup", label: "Session Setup", icon: BriefcaseBusiness, description: "Role, documents, intent" },
-  { id: "live", label: "Live Assist", icon: MessageCircle, description: "Transcript, questions, answer now" },
-  { id: "knowledge", label: "Knowledge", icon: Database, description: "Resume, JD, notes" },
-  { id: "prompts", label: "Prompt Studio", icon: SlidersHorizontal, description: "System prompts and style" },
-  { id: "settings", label: "Settings", icon: Settings2, description: "AI provider and API keys" },
-  { id: "review", label: "Review", icon: History, description: "Timeline and report" }
+const pageTabs: { id: AppPage; label: string; icon: typeof MessageCircle; shortLabel?: string }[] = [
+  { id: "setup", label: "Setup", shortLabel: "Setup", icon: BriefcaseBusiness },
+  { id: "live", label: "Live", shortLabel: "Live", icon: MessageCircle },
+  { id: "knowledge", label: "Knowledge", shortLabel: "Files", icon: Database },
+  { id: "prompts", label: "Prompts", shortLabel: "Prompts", icon: SlidersHorizontal },
+  { id: "settings", label: "Settings", shortLabel: "Provider", icon: Settings2 },
+  { id: "review", label: "Review", shortLabel: "Review", icon: History }
 ];
+
+function sessionContextLabel(session: SessionSetup): string {
+  if (session.mode === "meeting") return session.meetingTopic || "Meeting not set";
+  return session.role || "Role not set";
+}
+
+function sessionPartnerLabel(session: SessionSetup): string {
+  if (session.mode === "meeting") return session.meetingAudience || session.company || "Audience not set";
+  return session.company || "Company not set";
+}
 
 function App() {
   const initialPage = getInitialPage();
@@ -329,6 +381,23 @@ function App() {
   const activeQuestions = useMemo(() => questions.filter((question) => question.status !== "dismissed"), [questions]);
   const selectedQuestion =
     activeQuestions.find((question) => question.id === selectedQuestionId) || activeQuestions[0] || null;
+  const setupReady = session.mode === "meeting"
+    ? Boolean(session.meetingTopic.trim() || session.meetingGoal.trim())
+    : Boolean(session.role.trim() || session.company.trim());
+  const indexedDocumentCount = documents.filter((document) => document.status === "indexed").length;
+  const knowledgeReady = indexedDocumentCount > 0;
+  const liveReady = micEnabled || systemEnabled || transcript.length > 0;
+  const providerReady = true;
+  const reviewReady = questions.length > 0 || answerDrafts.length > 0;
+  const readinessItems = {
+    setup: setupReady,
+    knowledge: knowledgeReady,
+    settings: providerReady,
+    live: liveReady,
+    review: reviewReady,
+    prompts: true,
+  } satisfies Record<AppPage, boolean>;
+  const readinessScore = [setupReady, knowledgeReady, providerReady, liveReady].filter(Boolean).length;
 
   const queueAutoAnswer = useCallback((detectedQuestions: QuestionCard[]) => {
     if (!autoAnswerEnabled) return;
@@ -678,15 +747,22 @@ function App() {
         </div>
 
         <div className="session-status">
-          <span className="live-pill">
-            <Radio size={14} />
-            {isLive ? "Live capture" : "Paused"}
-          </span>
+          <button
+            className={`live-pill ${isLive ? "" : "paused"}`}
+            type="button"
+            aria-label={isLive ? "Pause live capture" : "Resume live capture"}
+            aria-pressed={isLive}
+            onClick={() => setIsLive((value) => !value)}
+            title={isLive ? "Live capture running — click to pause" : "Live capture paused — click to resume"}
+          >
+            <Radio size={13} />
+            {isLive ? "Live" : "Paused"}
+          </button>
           <button
             className="icon-button"
             type="button"
-            title="Open overlay"
-            aria-label="Open overlay"
+            title="Floating overlay window"
+            aria-label="Open floating overlay window"
             onClick={openOverlay}
           >
             <MonitorDot size={16} />
@@ -694,8 +770,8 @@ function App() {
           <button
             className="icon-button"
             type="button"
-            title="Open answer overlay"
-            aria-label="Open answer overlay"
+            title="Standalone answer window"
+            aria-label="Open standalone answer window"
             onClick={openAnswerWindow}
           >
             <ExternalLink size={16} />
@@ -703,40 +779,51 @@ function App() {
           <button
             className="icon-button"
             type="button"
-            title="Hide overlays"
-            aria-label="Hide overlays"
+            title="Hide overlay windows"
+            aria-label="Hide overlay windows"
             onClick={hideOverlays}
           >
             <EyeOff size={16} />
           </button>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={isLive ? "Pause live capture" : "Resume live capture"}
-            aria-pressed={isLive}
-            onClick={() => setIsLive((value) => !value)}
-          >
-            {isLive ? <Pause size={16} /> : <Play size={16} />}
-          </button>
         </div>
       </header>
 
+      <nav className="workflow-tabs" aria-label="Product workflow" role="tablist">
+        {pageTabs.map((tab) => {
+          const Icon = tab.icon;
+          const ready = readinessItems[tab.id];
+          const active = activePage === tab.id;
+          return (
+            <button
+              className={`workflow-tab ${active ? "active" : ""} ${ready ? "ready" : ""}`}
+              key={tab.id}
+              type="button"
+              aria-controls={`page-${tab.id}`}
+              aria-current={active ? "page" : undefined}
+              aria-selected={active}
+              role="tab"
+              onClick={() => setActivePage(tab.id)}
+              title={tab.label}
+            >
+              <Icon size={18} />
+              <span>{tab.label}</span>
+              <i className="tab-state" aria-hidden="true" data-ready={ready ? "true" : "false"} />
+            </button>
+          );
+        })}
+      </nav>
+
       <section className="session-banner session-banner-compact" aria-label="Current session">
         <div className="session-banner-main">
-          <span className="session-pill accent">{roundLabel(session.round)}</span>
-          {(session.role || session.company) ? (
-            <span className="session-pill primary">
-              {[session.role, session.company && `@ ${session.company}`].filter(Boolean).join(" ")}
-            </span>
-          ) : (
-            <span className="session-pill muted">Set role in Session Setup</span>
-          )}
+          <span className="session-pill accent">{session.mode === "meeting" ? "Meeting" : roundLabel(session.round)}</span>
+          <span className="session-pill primary">{sessionContextLabel(session)}</span>
+          <span className="session-pill muted">{sessionPartnerLabel(session)}</span>
           <span className="session-pill muted">{voiceProfileLabel(session.voiceProfile, session.customVoice)}</span>
         </div>
         <div className="session-banner-meta">
-          <span className="session-stat">{questions.length} Q</span>
-          <span className="session-stat">
-            {documents.filter((document) => document.status === "indexed").length}/{documents.length} docs
+          <span className={`session-stat readiness-stat ${readinessScore === 4 ? "complete" : ""}`} title="Setup readiness">
+            <Gauge size={13} />
+            {readinessScore}/4
           </span>
           <button
             className="ghost-action compact session-new-button"
@@ -744,33 +831,11 @@ function App() {
             onClick={() => void startNewSession()}
             title="Archive current live data and start a fresh session"
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={13} />
             New
           </button>
         </div>
       </section>
-
-      <nav className="workflow-tabs" aria-label="Product workflow" role="tablist">
-        {pageTabs.map((tab) => {
-          const Icon = tab.icon;
-          return (
-            <button
-              className={`workflow-tab ${activePage === tab.id ? "active" : ""}`}
-              key={tab.id}
-              type="button"
-              aria-controls={`page-${tab.id}`}
-              aria-current={activePage === tab.id ? "page" : undefined}
-              aria-selected={activePage === tab.id}
-              role="tab"
-              onClick={() => setActivePage(tab.id)}
-            >
-              <Icon size={18} />
-              <span>{tab.label}</span>
-              <small>{tab.description}</small>
-            </button>
-          );
-        })}
-      </nav>
 
       {appNotice && (
         <Notice
@@ -920,6 +985,7 @@ function LiveAssistPage({
       || null
   ), [answerDrafts, session.answerFormat]);
   const latestTranscript = useMemo(() => transcript.slice(-12).reverse(), [transcript]);
+  const answeredCount = activeQuestions.filter((question) => question.status === "answered" || question.status === "saved").length;
   const submitManualTranscript = async () => {
     const text = manualText.trim();
     if (!text) return;
@@ -1095,16 +1161,36 @@ function LiveAssistPage({
   return (
     <section className="page-shell live-page live-coach-page" id="page-live" role="tabpanel" aria-label="Live assist">
       <div className="page-heading live-coach-heading">
-        <div>
-          <span className="eyebrow">Interview Coach</span>
-          <h2>Live Assist</h2>
-          <p className="live-coach-subtitle">Questions are detected from the conversation and answered automatically below.</p>
+        <div className="live-coach-title">
+          <span className="eyebrow">Live workspace</span>
+          <h2>{session.mode === "meeting" ? "Meeting Assist" : "Interview Assist"}</h2>
+          <p className="live-coach-subtitle">
+            <span className="live-coach-status-pill">
+              {micEnabled || systemEnabled
+                ? (streamingAvailable ? "Streaming live" : "Listening")
+                : "Enable Interviewer audio to start"}
+            </span>
+            {isAnswering && (
+              <span className="live-coach-status-pill working">
+                <Sparkles size={12} />
+                Generating answer
+              </span>
+            )}
+            <span className="live-coach-status-pill">
+              {activeQuestions.length} questions · {answeredCount} answered
+            </span>
+          </p>
         </div>
         <div className="live-top-controls live-coach-controls">
-          <AudioToggle enabled={autoAnswerEnabled} icon={<Sparkles size={17} />} label="Auto" onChange={setAutoAnswerEnabled} />
           <AudioToggle enabled={systemEnabled} icon={<MonitorDot size={17} />} label="Interviewer" onChange={toggleSystemCapture} />
           <AudioToggle enabled={micEnabled} icon={<Mic2 size={17} />} label="You" onChange={toggleMicCapture} />
-          <button className="ghost-action compact" type="button" onClick={() => setShowTranscriptRail((value) => !value)}>
+          <AudioToggle enabled={autoAnswerEnabled} icon={<Sparkles size={17} />} label="Auto" onChange={setAutoAnswerEnabled} />
+          <button
+            className="ghost-action compact"
+            type="button"
+            onClick={() => setShowTranscriptRail((value) => !value)}
+            aria-pressed={showTranscriptRail}
+          >
             <AudioWaveform size={16} />
             {showTranscriptRail ? "Hide transcript" : "Show transcript"}
           </button>
@@ -1113,7 +1199,7 @@ function LiveAssistPage({
 
       <div className="live-coach-toolbar">
         <ChipGroup
-          label="Answer style"
+          label="Answer format"
           value={session.answerFormat}
           options={formatOptions}
           onChange={(answerFormat) => void onSessionPatch({ answerFormat })}
@@ -1123,10 +1209,6 @@ function LiveAssistPage({
           customVoice={session.customVoice}
           onChange={(patch) => void onSessionPatch(patch)}
         />
-        <span className="live-coach-status">
-          {micEnabled || systemEnabled ? (streamingAvailable ? "Streaming live" : "Listening") : "Enable Interviewer audio to start"}
-          {isAnswering ? " · Generating answer..." : autoAnswerEnabled ? " · Auto mode on" : " · Manual mode"}
-        </span>
       </div>
 
       <div className={`live-coach-layout${showTranscriptRail ? "" : " transcript-hidden"}`}>
@@ -1270,13 +1352,15 @@ function SetupPage({
   const updateSession = (patch: Partial<SessionSetup>) => {
     onSessionChange({ ...session, ...patch });
   };
+  const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
 
   return (
     <section className="page-shell" id="page-setup" role="tabpanel" aria-label="Session setup">
       <div className="page-heading">
         <div>
           <span className="eyebrow">Session Setup</span>
-          <h2>Session Setup</h2>
+          <h2>{session.mode === "meeting" ? "Prepare the meeting" : "Prepare the interview"}</h2>
+          <p className="page-lede">{session.title}</p>
         </div>
         <button className="primary-action" type="button" onClick={saveAndStart}>
           <Play size={17} />
@@ -1285,36 +1369,90 @@ function SetupPage({
       </div>
 
       <div className="setup-grid">
-        <section className="setup-card wide-card">
-          <PanelHeader eyebrow="Step 1" icon={<BriefcaseBusiness size={18} />} title="Role and company" />
+        <section className="setup-card setup-card-primary wide-card">
+          <PanelHeader eyebrow="Context" icon={<Target size={18} />} title={session.mode === "meeting" ? "Meeting context" : "Role and company"} />
+          <SegmentedControl
+            label="Session mode"
+            value={session.mode}
+            options={[
+              { label: "Interview", value: "interview" },
+              { label: "Meeting", value: "meeting" },
+            ]}
+            onChange={(nextMode) => updateSession({
+              mode: nextMode,
+              title: nextMode === "meeting"
+                ? buildMeetingTitle(session.meetingTopic, session.meetingAudience)
+                : buildSessionTitle(session.role, session.company),
+            })}
+          />
           <div className="field-grid">
-            <Field
-              label="Target role"
-              value={session.role}
-              onChange={(role) => updateSession({
-                role,
-                title: buildSessionTitle(role, session.company),
-              })}
-            />
-            <Field
-              label="Company"
-              value={session.company}
-              onChange={(company) => updateSession({
-                company,
-                title: buildSessionTitle(session.role, company),
-              })}
-            />
-            <SelectField
-              label="Round"
-              value={session.round}
-              options={roundOptions}
-              onChange={(round) => updateSession({ round })}
-            />
-            <Field label="Seniority" value={session.seniority} onChange={(seniority) => updateSession({ seniority })} />
+            {session.mode === "meeting" ? (
+              <>
+                <Field
+                  label="Meeting topic"
+                  value={session.meetingTopic}
+                  onChange={(meetingTopic) => updateSession({
+                    meetingTopic,
+                    title: buildMeetingTitle(meetingTopic, session.meetingAudience),
+                  })}
+                />
+                <Field
+                  label="Audience"
+                  value={session.meetingAudience}
+                  onChange={(meetingAudience) => updateSession({
+                    meetingAudience,
+                    title: buildMeetingTitle(session.meetingTopic, meetingAudience),
+                  })}
+                />
+                <Field label="Your role" value={session.role} onChange={(role) => updateSession({ role })} />
+                <Field label="Organization" value={session.company} onChange={(company) => updateSession({ company })} />
+                <TextAreaField
+                  label="Meeting goal"
+                  value={session.meetingGoal}
+                  onChange={(meetingGoal) => updateSession({ meetingGoal })}
+                />
+                <TextAreaField
+                  label="Key notes"
+                  value={session.meetingNotes}
+                  onChange={(meetingNotes) => updateSession({ meetingNotes })}
+                />
+              </>
+            ) : (
+              <>
+                <Field
+                  label="Target role"
+                  value={session.role}
+                  onChange={(role) => updateSession({
+                    role,
+                    title: buildSessionTitle(role, session.company),
+                  })}
+                />
+                <Field
+                  label="Company"
+                  value={session.company}
+                  onChange={(company) => updateSession({
+                    company,
+                    title: buildSessionTitle(session.role, company),
+                  })}
+                />
+                <SelectField
+                  label="Round"
+                  value={session.round}
+                  options={roundOptions}
+                  onChange={(round) => updateSession({ round })}
+                />
+                <Field label="Seniority" value={session.seniority} onChange={(seniority) => updateSession({ seniority })} />
+              </>
+            )}
           </div>
         </section>
         <section className="setup-card wide-card">
-          <PanelHeader eyebrow="Documents" icon={<Upload size={18} />} title="Upload interview context" />
+          <PanelHeader
+            eyebrow="Knowledge"
+            icon={<Upload size={18} />}
+            title={session.mode === "meeting" ? "Meeting materials" : "Interview materials"}
+            action={`${indexedDocuments}/${documents.length} indexed`}
+          />
           <div className="setup-document-grid">
             {documents.map((document) => (
               <article className="setup-document" key={document.id}>
@@ -1341,7 +1479,7 @@ function SetupPage({
           </div>
         </section>
         <section className="setup-card">
-          <PanelHeader eyebrow="Voice & style" icon={<UserRoundCheck size={18} />} title="How answers should sound" />
+          <PanelHeader eyebrow="Voice" icon={<UserRoundCheck size={18} />} title="Response style" />
           <div className="preference-list">
             {responseStyleOptions.map((option) => (
               <Preference
@@ -1355,7 +1493,7 @@ function SetupPage({
           </div>
           <div className="setup-style-controls">
             <ChipGroup
-              label="Answer style"
+              label="Answer format"
               value={session.answerFormat}
               options={formatOptions}
               onChange={(answerFormat) => updateSession({ answerFormat })}
@@ -1368,12 +1506,11 @@ function SetupPage({
           </div>
         </section>
         <section className="setup-card">
-          <PanelHeader eyebrow="Capture" icon={<Mic2 size={18} />} title="Audio readiness" />
-          <div className="capture-list">
-            <Fact label="Mic" value="Clean" />
-            <Fact label="System" value="Ready" />
-            <Fact label="Language" value={session.language} />
-          </div>
+          <PanelHeader eyebrow="Capture" icon={<Mic2 size={18} />} title="Audio and language" />
+          <Field label="Spoken language" value={session.language} onChange={(language) => updateSession({ language })} />
+          <p className="setup-card-hint">
+            Microphone and system audio are turned on from the Live tab during the session.
+          </p>
         </section>
       </div>
     </section>
@@ -1391,12 +1528,18 @@ function KnowledgePage({
   onDeleteDocument: (documentId: string) => Promise<void>;
   onUploadDocument: (file: File) => Promise<void>;
 }) {
+  const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
+  const processingDocuments = documents.filter((document) => document.status === "processing").length;
+  const summary = processingDocuments > 0
+    ? `${indexedDocuments} searchable · ${processingDocuments} indexing`
+    : `${indexedDocuments} of ${documents.length} searchable`;
   return (
     <section className="page-shell" id="page-knowledge" role="tabpanel" aria-label="Knowledge">
       <div className="page-heading">
         <div>
           <span className="eyebrow">Knowledge</span>
-          <h2>Knowledge</h2>
+          <h2>Knowledge base</h2>
+          <p className="page-lede">{summary}</p>
         </div>
         <div className="inline-actions">
           <button className="ghost-action" type="button" onClick={() => void onAddPastedDocument()}>
@@ -1512,6 +1655,8 @@ function PromptStudioPage({
   const [draft, setDraft] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
   const activePrompt = prompts.find((prompt) => prompt.id === activePromptId) || prompts[0];
+  const draftWordCount = draft.trim() ? draft.trim().split(/\s+/).length : 0;
+  const draftVariableCount = activePrompt?.variables.length || 0;
 
   useEffect(() => {
     fetch("/api/prompts")
@@ -1550,8 +1695,9 @@ function PromptStudioPage({
     <section className="page-shell prompt-page" id="page-prompts" role="tabpanel" aria-label="Prompt studio">
       <div className="page-heading">
         <div>
-          <span className="eyebrow">Prompt Studio</span>
+          <span className="eyebrow">Prompts</span>
           <h2>Prompt Studio</h2>
+          <p className="page-lede">Pick a voice and edit the system prompts that shape every answer.</p>
         </div>
         <button className="primary-action" type="button" onClick={savePrompt} disabled={!activePrompt}>
           <Check size={17} />
@@ -1569,7 +1715,10 @@ function PromptStudioPage({
               type="button"
               onClick={() => void onSessionPatch({ voiceProfile: option.value })}
             >
-              <strong>{option.label}</strong>
+              <strong>
+                {option.label}
+                {session.voiceProfile === option.value && <span className="active-card-badge">Active</span>}
+              </strong>
               <span>{option.note}</span>
             </button>
           ))}
@@ -1583,7 +1732,7 @@ function PromptStudioPage({
           )}
         </section>
         <section className="prompt-editor">
-          <PanelHeader eyebrow="System prompt" icon={<SlidersHorizontal size={18} />} title={activePrompt?.title || "Prompt editor"} />
+          <PanelHeader eyebrow="System prompt" icon={<SlidersHorizontal size={18} />} title="Prompt template" />
           <div className="prompt-switcher" aria-label="Prompt template">
             {prompts.map((prompt) => (
               <button
@@ -1595,6 +1744,11 @@ function PromptStudioPage({
                 {prompt.title}
               </button>
             ))}
+          </div>
+          <div className="prompt-meta-strip" aria-label="Prompt statistics">
+            <Fact label="Words" value={draftWordCount.toLocaleString()} />
+            <Fact label="Variables" value={draftVariableCount.toLocaleString()} />
+            <Fact label="Template" value={activePrompt?.title || "Loading"} />
           </div>
           <textarea
             className="prompt-textarea"
@@ -1651,6 +1805,7 @@ function ReviewPage({ questions }: { questions: QuestionCard[] }) {
   const exportSession = (id = "current", format: "json" | "markdown" = "markdown") => {
     window.open(`/api/sessions/${id}/export?format=${format}`, "_blank", "noopener,noreferrer");
   };
+  const answeredQuestions = questions.filter((question) => question.status === "answered" || question.status === "saved").length;
 
   return (
     <section className="page-shell" id="page-review" role="tabpanel" aria-label="Review">
@@ -1658,6 +1813,7 @@ function ReviewPage({ questions }: { questions: QuestionCard[] }) {
         <div>
           <span className="eyebrow">Review</span>
           <h2>Review</h2>
+          <p className="page-lede">Turn live sessions into exports, archives, and a focused follow-up queue.</p>
         </div>
         <div className="inline-actions">
           <button className="ghost-action" type="button" onClick={() => exportSession()}>
@@ -1676,6 +1832,13 @@ function ReviewPage({ questions }: { questions: QuestionCard[] }) {
       </div>
       {reportNotice && <p className="live-notice" role="status">{reportNotice}</p>}
 
+      <div className="review-summary-strip" aria-label="Review summary">
+        <Fact label="Questions" value={questions.length.toLocaleString()} />
+        <Fact label="Answered" value={answeredQuestions.toLocaleString()} />
+        <Fact label="Archives" value={archives.length.toLocaleString()} />
+        <Fact label="Report" value={report ? "Ready" : "Not generated"} />
+      </div>
+
       <div className="review-grid">
         <section className="review-card">
           <PanelHeader eyebrow="Timeline" icon={<History size={18} />} title="Question history" />
@@ -1684,7 +1847,7 @@ function ReviewPage({ questions }: { questions: QuestionCard[] }) {
               <span className={`status-dot ${question.status}`} />
               <div>
                 <strong>{question.rawText}</strong>
-                <p>{question.type} - {Math.round(question.confidence * 100)}% confidence</p>
+                <p>{question.type} · {Math.round(question.confidence * 100)}% confidence</p>
               </div>
             </div>
           )) : <EmptyState title="No session history yet" detail="Detected questions and answers will appear after a live session." />}
@@ -1699,11 +1862,12 @@ function ReviewPage({ questions }: { questions: QuestionCard[] }) {
               ))}
             </div>
           ) : (
-            <div className="practice-stack">
-              <Preference title="Generate a session report" detail="Create a practice queue from answered and unresolved questions." active />
-              <Preference title="Evidence check" detail="Answered items will show whether the response used document context." />
-              <Preference title="Follow-up prep" detail="Unanswered questions become the next practice list." />
-            </div>
+            <EmptyState
+              title="No report yet"
+              detail={questions.length
+                ? "Generate a report to build a practice queue from this session."
+                : "Run a live session, then generate a report to see your prep focus."}
+            />
           )}
         </section>
         <section className="review-card wide-card">
@@ -1733,84 +1897,6 @@ function ReviewPage({ questions }: { questions: QuestionCard[] }) {
         </section>
       </div>
     </section>
-  );
-}
-
-function QuestionCandidate({
-  onAnswer,
-  onDismiss,
-  onSelect,
-  onSave,
-  question,
-  selected
-}: {
-  onAnswer: () => void;
-  onDismiss: () => void;
-  onSelect: () => void;
-  onSave: () => void;
-  question: QuestionCard;
-  selected: boolean;
-}) {
-  return (
-    <article className={`question-candidate ${selected ? "selected" : ""}`} role="listitem" aria-current={selected ? "true" : undefined}>
-      <div className="question-meta">
-        <span className={`status-dot ${question.status}`} />
-        <span>{question.type}</span>
-        <span>{Math.round(question.confidence * 100)}%</span>
-      </div>
-      <strong>{question.rawText}</strong>
-      <p>{question.framedQuestion}</p>
-      <div className="question-actions">
-        <button
-          className="icon-action"
-          type="button"
-          onClick={onSave}
-          aria-label={question.status === "saved" ? "Unsave question" : "Save question"}
-          title={question.status === "saved" ? "Unsave question" : "Save question"}
-        >
-          <Bookmark size={16} fill={question.status === "saved" ? "currentColor" : "none"} />
-        </button>
-        <button className="icon-action" type="button" onClick={onDismiss} aria-label="Dismiss question" title="Dismiss question">
-          <X size={16} />
-        </button>
-        <button className="ghost-action" type="button" onClick={onSelect}>
-          Inspect
-        </button>
-        <button className="primary-action compact" type="button" onClick={onAnswer}>
-          Answer now
-        </button>
-      </div>
-    </article>
-  );
-}
-
-function TranscriptBubble({
-  event,
-  onToggle,
-  selected
-}: {
-  event: TranscriptEvent;
-  onToggle: () => void;
-  selected: boolean;
-}) {
-  const fromUser = event.source === "mic";
-  return (
-    <article className={`transcript-bubble ${fromUser ? "user" : "system"} ${selected ? "selected" : ""}`} role="listitem">
-      <button
-        className="select-transcript"
-        type="button"
-        onClick={onToggle}
-        aria-label={`${selected ? "Unselect" : "Select"} transcript segment`}
-        aria-pressed={selected}
-      >
-        {selected ? <CheckSquare size={16} /> : <span />}
-      </button>
-      <div className="bubble-avatar">{fromUser ? <Mic2 size={16} /> : <MonitorDot size={16} />}</div>
-      <div>
-        <span>{fromUser ? "You" : event.source === "system" ? "Interviewer" : "Second Chair"}</span>
-        <p>{event.text}</p>
-      </div>
-    </article>
   );
 }
 
@@ -1879,6 +1965,15 @@ function Field({ label, onChange, value }: { label: string; onChange?: (value: s
   );
 }
 
+function TextAreaField({ label, onChange, value }: { label: string; onChange: (value: string) => void; value: string }) {
+  return (
+    <label className="field-control field-control-wide">
+      <span>{label}</span>
+      <textarea rows={3} value={value} onChange={(event) => onChange(event.target.value)} />
+    </label>
+  );
+}
+
 function SelectField<TValue extends string>({
   label,
   onChange,
@@ -1907,6 +2002,9 @@ function SelectField<TValue extends string>({
 function EmptyState({ detail, title }: { detail: string; title: string }) {
   return (
     <div className="empty-state">
+      <span className="empty-state-mark" aria-hidden="true">
+        <Sparkles size={18} />
+      </span>
       <strong>{title}</strong>
       <span>{detail}</span>
     </div>
@@ -1936,35 +2034,23 @@ function OnboardingWizard({ onClose }: { onClose: () => void }) {
   const steps = [
     {
       title: "Add your NVIDIA API key",
-      detail: "Second Chair defaults to NVIDIA for answers, live captions, and document search. Open Settings anytime to switch providers.",
+      detail: "Second Chair defaults to NVIDIA for answers, live captions, and document search. You can switch providers anytime from Settings.",
       content: (
         <>
           <ApiKeyGuideCard guide={DEFAULT_API_KEY_GUIDE} compact />
           <p className="wizard-note">
-            Prefer OpenAI, Gemini, or Claude? Go to Settings, choose another provider, and follow the short key guide shown there.
+            Prefer OpenAI, Gemini, or Claude? Go to Settings, pick another provider, and follow its key guide.
           </p>
         </>
       ),
     },
     {
-      title: "Start with setup",
-      detail: "Enter the role, company, round, seniority, and upload the documents that should ground answers."
+      title: "Set the context",
+      detail: "Open Setup, choose Interview or Meeting, and add the role, round, and any documents (resume, JD, notes) that should ground every answer."
     },
     {
       title: "Run Live Assist",
-      detail: "Turn on microphone and system audio, watch the transcript populate, and select transcript segments."
-    },
-    {
-      title: "Use the overlay",
-      detail: "Open the floating overlay during calls. Tap Listen for live captions, then Answer when a question is detected. Use Open cockpit in the overlay for full setup and Settings."
-    },
-    {
-      title: "Answer from context",
-      detail: "Use Ask AI for selected transcript text, or Answer now from possible questions detected from the transcript."
-    },
-    {
-      title: "Tune and review",
-      detail: "Use Settings for API keys and models, Prompt Studio for system prompts, and Review for the session timeline."
+      detail: "On the Live tab, turn on Interviewer (and You) audio. Detected questions and a speakable answer appear automatically. Open the floating overlay window from the top bar during real calls."
     }
   ];
   const [stepIndex, setStepIndex] = useState(0);

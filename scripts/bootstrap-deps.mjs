@@ -228,11 +228,13 @@ export async function bootstrapEnvironment({ requirePython = false } = {}) {
     fail([
       "Python 3 is required for NVIDIA live captions.",
       "macOS: brew install python3",
+      "Linux: install python3 and python3-pip with your package manager",
       "Windows: https://www.python.org/downloads/",
     ].join("\n"));
   } else {
     warn("Python 3 not found. OpenAI/Gemini/Claude stacks still work; NVIDIA live captions need Python 3.");
     warn("  macOS: brew install python3");
+    warn("  Linux: install python3 and python3-pip with your package manager");
     warn("  Windows: https://www.python.org/downloads/");
   }
 

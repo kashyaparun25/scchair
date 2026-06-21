@@ -26,6 +26,7 @@
   },
   "os": [
     "darwin",
+    "linux",
     "win32"
   ],
   "keywords": [
@@ -53,10 +54,10 @@
     "doctor": "node bin/scchair.mjs doctor",
     "dev": "node scripts/dev.mjs",
     "dev:desktop": "node electron/dev.mjs",
-    "dev:desktop:main": "SECOND_CHAIR_STARTUP_SURFACE=main node electron/dev.mjs",
-    "dev:desktop:overlay": "SECOND_CHAIR_STARTUP_SURFACE=overlay node electron/dev.mjs",
-    "dev:desktop:answer": "SECOND_CHAIR_STARTUP_SURFACE=answer node electron/dev.mjs",
-    "dev:desktop:all": "SECOND_CHAIR_STARTUP_SURFACE=all node electron/dev.mjs",
+    "dev:desktop:main": "node electron/dev.mjs --surface main",
+    "dev:desktop:overlay": "node electron/dev.mjs --surface overlay",
+    "dev:desktop:answer": "node electron/dev.mjs --surface answer",
+    "dev:desktop:all": "node electron/dev.mjs --surface all",
     "dev:ui": "vite --host 127.0.0.1 --strictPort",
     "dev:api": "tsx src/server/http.ts",
     "electron": "electron electron/main.js",

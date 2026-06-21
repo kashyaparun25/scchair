@@ -9,6 +9,7 @@ import {
   Copy,
   ExternalLink,
   EyeOff,
+  GripHorizontal,
   LayoutPanelLeft,
   Mic2,
   MonitorDot,
@@ -42,6 +43,24 @@ type InterviewDomain =
   | "sales-engineering"
   | "product-operations"
   | "coding";
+type StealthPersona = {
+  id: string;
+  label: string;
+  processTitle: string;
+  appName: string;
+};
+type StealthConfig = {
+  enabled: boolean;
+  persona: string;
+  defaultClickThrough: boolean;
+  autoHideOnBlur: boolean;
+};
+type StealthInfo = {
+  config: StealthConfig;
+  personas: StealthPersona[];
+  shortcuts: Record<string, string>;
+  overlayClickThrough: boolean;
+};
 type BrowserSpeechRecognition = {
   continuous: boolean;
   interimResults: boolean;
@@ -75,10 +94,27 @@ declare global {
       capture?: {
         screenshot: (options?: { sourceId?: string }) => Promise<{ dataUrl: string; name: string; id: string }>;
       };
+      stealth?: {
+        get: () => Promise<StealthInfo>;
+        update: (patch: Partial<StealthConfig>) => Promise<{ config: StealthConfig; overlayClickThrough: boolean }>;
+        setClickThrough: (enabled: boolean) => Promise<{ clickThrough: boolean }>;
+        panic: () => Promise<{ visible: boolean }>;
+      };
       shortcuts?: {
-        on: (channel: "shortcut:captureScreenshot" | "shortcut:toggleAnswer" | "shortcut:toggleOverlay" | "shortcut:hideOverlays", listener: (payload: unknown) => void) => () => void;
+        on: (
+          channel:
+            | "shortcut:captureScreenshot"
+            | "shortcut:toggleAnswer"
+            | "shortcut:toggleOverlay"
+            | "shortcut:hideOverlays"
+            | "shortcut:toggleVisibility"
+            | "shortcut:toggleInteraction"
+            | "stealth:changed",
+          listener: (payload: unknown) => void
+        ) => () => void;
       };
     };
+    secondChair?: Window["interviewCopilot"];
   }
 }
 
@@ -495,7 +531,8 @@ function OverlayApp() {
   return (
     <main className="overlay-shell" aria-label="Second Chair overlay">
       <header className="overlay-topbar">
-        <div className="overlay-brand">
+        <div className="overlay-brand" aria-hidden="true">
+          <GripHorizontal size={16} className="overlay-drag-handle" />
           <MonitorDot size={17} />
           <strong>Second Chair</strong>
         </div>

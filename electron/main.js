@@ -11,6 +11,13 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareSpawn, runtimeEnv } from "../scripts/runtime-env.mjs";
+import {
+  applyStealth,
+  applyWindowTitle,
+  loadStealthConfig,
+  saveStealthConfig,
+  STEALTH_PERSONAS
+} from "./stealth.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,7 +39,9 @@ const SHORTCUTS = Object.freeze({
   toggleOverlay: runtimeEnv("SHORTCUT_OVERLAY", "CommandOrControl+Shift+O"),
   toggleAnswer: runtimeEnv("SHORTCUT_ANSWER", "CommandOrControl+Shift+A"),
   captureScreenshot: runtimeEnv("SHORTCUT_SCREENSHOT", "CommandOrControl+Shift+S"),
-  hideOverlays: runtimeEnv("SHORTCUT_HIDE_OVERLAYS", "CommandOrControl+Shift+H")
+  hideOverlays: runtimeEnv("SHORTCUT_HIDE_OVERLAYS", "CommandOrControl+Shift+H"),
+  toggleVisibility: runtimeEnv("SHORTCUT_TOGGLE_VISIBILITY", "CommandOrControl+Shift+V"),
+  toggleInteraction: runtimeEnv("SHORTCUT_TOGGLE_INTERACTION", "CommandOrControl+Shift+I")
 });
 const STARTUP_SURFACE = runtimeEnv("STARTUP_SURFACE", "main");
 const validWindowRoles = new Set(["main", "overlay", "answer"]);
@@ -49,6 +58,16 @@ const windows = {
 
 let apiProcess = null;
 let isQuitting = false;
+let stealthConfig = loadStealthConfig();
+let overlayClickThrough = stealthConfig.defaultClickThrough;
+let cachedVisibilityBeforePanic = { overlay: false, answer: false };
+let panicHidden = false;
+
+applyStealth(stealthConfig);
+
+app.on("ready", () => {
+  applyStealth(stealthConfig);
+});
 
 function isAllowedAppUrl(targetUrl) {
   if (!targetUrl) return false;
@@ -159,11 +178,18 @@ function stopApiServer() {
 }
 
 function createWindow(role, options) {
+  const isOverlayLike = role === "overlay" || role === "answer";
+  const baseBackground = isOverlayLike ? "#00000000" : undefined;
+
   const window = new BrowserWindow({
     ...options,
     title: options.title || "Second Chair",
     show: false,
-    backgroundColor: options.backgroundColor || "#f7f5ef",
+    backgroundColor: options.backgroundColor || baseBackground,
+    transparent: isOverlayLike ? true : Boolean(options.transparent),
+    vibrancy: options.vibrancy,
+    visualEffectState: options.visualEffectState,
+    hasShadow: typeof options.hasShadow === "boolean" ? options.hasShadow : true,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -210,6 +236,8 @@ function applyOverlayWindowBehavior(window, role) {
     // Not supported on every platform/window manager.
   }
 
+  applyWindowTitle(window, stealthConfig);
+
   const enforceAlwaysOnTop = () => {
     if (window.isDestroyed()) return;
     try {
@@ -224,11 +252,85 @@ function applyOverlayWindowBehavior(window, role) {
   };
 
   window.on("show", () => {
-    window.setIgnoreMouseEvents(false);
+    window.setIgnoreMouseEvents(role === "overlay" ? overlayClickThrough : false, { forward: true });
     setTimeout(enforceAlwaysOnTop, 50);
     setTimeout(enforceAlwaysOnTop, 200);
   });
-  window.on("blur", () => setTimeout(enforceAlwaysOnTop, 100));
+  window.on("blur", () => {
+    setTimeout(enforceAlwaysOnTop, 100);
+    if (stealthConfig.autoHideOnBlur && !panicHidden) {
+      window.hide();
+    }
+  });
+}
+
+function applyStealthToAllWindows(config) {
+  for (const window of Object.values(windows)) {
+    if (window && !window.isDestroyed()) {
+      applyWindowTitle(window, config);
+    }
+  }
+}
+
+function setOverlayClickThrough(enabled) {
+  overlayClickThrough = Boolean(enabled);
+  const overlay = windows.overlay;
+  if (overlay && !overlay.isDestroyed() && overlay.isVisible()) {
+    try {
+      overlay.setIgnoreMouseEvents(overlayClickThrough, { forward: true });
+    } catch (error) {
+      console.warn("[stealth] could not change click-through:", error?.message);
+    }
+  }
+  return { clickThrough: overlayClickThrough };
+}
+
+function toggleOverlayInteraction() {
+  return setOverlayClickThrough(!overlayClickThrough);
+}
+
+function panicToggleVisibility() {
+  const wantHidden = !panicHidden;
+  if (wantHidden) {
+    cachedVisibilityBeforePanic = {
+      overlay: Boolean(windows.overlay && !windows.overlay.isDestroyed() && windows.overlay.isVisible()),
+      answer: Boolean(windows.answer && !windows.answer.isDestroyed() && windows.answer.isVisible())
+    };
+    for (const role of ["overlay", "answer"]) {
+      const window = windows[role];
+      if (window && !window.isDestroyed()) {
+        try {
+          window.setOpacity(0);
+          window.hide();
+        } catch (error) {
+          console.warn(`[stealth] could not hide ${role}:`, error?.message);
+        }
+      }
+    }
+    panicHidden = true;
+    return { visible: false, hidden: ["overlay", "answer"] };
+  }
+
+  for (const role of ["overlay", "answer"]) {
+    const window = windows[role];
+    if (!window || window.isDestroyed()) continue;
+    const shouldShow = cachedVisibilityBeforePanic[role];
+    if (shouldShow) {
+      try {
+        window.setOpacity(1);
+        window.show();
+        window.setIgnoreMouseEvents(role === "overlay" ? overlayClickThrough : false, { forward: true });
+      } catch (error) {
+        console.warn(`[stealth] could not restore ${role}:`, error?.message);
+      }
+    }
+  }
+  panicHidden = false;
+  return {
+    visible: true,
+    overlay: Boolean(windows.overlay && !windows.overlay.isDestroyed() && windows.overlay.isVisible()),
+    answer: Boolean(windows.answer && !windows.answer.isDestroyed() && windows.answer.isVisible())
+  };
 }
 
 async function loadApp(window, desktopWindow) {
@@ -245,12 +347,31 @@ async function loadApp(window, desktopWindow) {
 }
 
 async function createMainWindow() {
+  const isMac = process.platform === "darwin";
+  const isWin = process.platform === "win32";
+
   const window = createWindow("main", {
     width: 1280,
     height: 860,
     minWidth: 960,
     minHeight: 640,
-    title: "Second Chair"
+    title: "Second Chair",
+    frame: false,
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
+    titleBarOverlay: isWin
+      ? {
+          color: "#0a0e17",
+          symbolColor: "#e7ecf3",
+          height: 36
+        }
+      : undefined,
+    trafficLightPosition: isMac ? { x: 14, y: 18 } : undefined,
+    vibrancy: isMac ? "under-window" : undefined,
+    visualEffectState: isMac ? "active" : undefined,
+    backgroundColor: "#00000000",
+    transparent: true,
+    hasShadow: true,
+    roundedCorners: isMac ? true : undefined
   });
 
   window.once("ready-to-show", () => {
@@ -262,6 +383,7 @@ async function createMainWindow() {
 }
 
 async function createOverlayWindow() {
+  const isMac = process.platform === "darwin";
   const window = createWindow("overlay", {
     width: 460,
     height: 220,
@@ -270,11 +392,14 @@ async function createOverlayWindow() {
     title: "Second Chair Overlay",
     frame: false,
     transparent: true,
+    vibrancy: isMac ? "under-window" : undefined,
+    visualEffectState: isMac ? "active" : undefined,
     resizable: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     focusable: true,
-    backgroundColor: "#00000000"
+    backgroundColor: "#00000000",
+    hasShadow: true
   });
 
   window.once("ready-to-show", () => {
@@ -285,6 +410,7 @@ async function createOverlayWindow() {
 }
 
 async function createAnswerWindow() {
+  const isMac = process.platform === "darwin";
   const window = createWindow("answer", {
     width: 560,
     height: 680,
@@ -293,11 +419,14 @@ async function createAnswerWindow() {
     title: "Second Chair Answers",
     frame: false,
     transparent: true,
+    vibrancy: isMac ? "under-window" : undefined,
+    visualEffectState: isMac ? "active" : undefined,
     resizable: true,
     alwaysOnTop: true,
     skipTaskbar: true,
     focusable: true,
-    backgroundColor: "#00000000"
+    backgroundColor: "#00000000",
+    hasShadow: true
   });
 
   await loadApp(window, "answer");
@@ -320,7 +449,13 @@ async function setWindowVisible(role, visible) {
 
   if (visible) {
     if (role === "overlay" || role === "answer") {
-      window.setIgnoreMouseEvents(false);
+      window.setIgnoreMouseEvents(role === "overlay" ? overlayClickThrough : false, { forward: true });
+      try {
+        window.setOpacity(1);
+      } catch {
+        // Some platforms may not support opacity changes; ignore.
+      }
+      panicHidden = false;
     }
     window.show();
     window.focus();
@@ -427,7 +562,9 @@ function registerGlobalShortcuts() {
     ["shortcut:toggleOverlay", SHORTCUTS.toggleOverlay, () => toggleWindow("overlay")],
     ["shortcut:toggleAnswer", SHORTCUTS.toggleAnswer, () => toggleWindow("answer")],
     ["shortcut:captureScreenshot", SHORTCUTS.captureScreenshot, () => captureScreenshot()],
-    ["shortcut:hideOverlays", SHORTCUTS.hideOverlays, () => hideOverlayWindows()]
+    ["shortcut:hideOverlays", SHORTCUTS.hideOverlays, () => hideOverlayWindows()],
+    ["shortcut:toggleVisibility", SHORTCUTS.toggleVisibility, () => panicToggleVisibility()],
+    ["shortcut:toggleInteraction", SHORTCUTS.toggleInteraction, () => toggleOverlayInteraction()]
   ];
 
   for (const [channel, accelerator, action] of registrations) {
@@ -483,7 +620,8 @@ ipcMain.handle("app:getInfo", () => ({
     healthUrl: API_HEALTH_URL,
     managed: Boolean(apiProcess)
   },
-  shortcuts: SHORTCUTS
+  shortcuts: SHORTCUTS,
+  stealth: stealthConfig
 }));
 
 ipcMain.handle("windows:setVisible", async (event, role, visible) => {
@@ -532,6 +670,54 @@ ipcMain.handle("capture:listSources", async (event) => {
 ipcMain.handle("capture:screenshot", async (event, options = {}) => {
   if (!getTrustedWindowFromEvent(event)) throw new Error("Untrusted capture request.");
   return captureScreenshot(typeof options.sourceId === "string" ? options.sourceId : undefined);
+});
+
+ipcMain.handle("stealth:get", () => ({
+  config: stealthConfig,
+  personas: Object.values(STEALTH_PERSONAS),
+  shortcuts: {
+    toggleVisibility: SHORTCUTS.toggleVisibility,
+    toggleInteraction: SHORTCUTS.toggleInteraction,
+    hideOverlays: SHORTCUTS.hideOverlays,
+    toggleOverlay: SHORTCUTS.toggleOverlay,
+    toggleAnswer: SHORTCUTS.toggleAnswer,
+    captureScreenshot: SHORTCUTS.captureScreenshot
+  },
+  overlayClickThrough
+}));
+
+ipcMain.handle("stealth:update", async (event, patch) => {
+  if (!getTrustedWindowFromEvent(event)) throw new Error("Untrusted stealth update.");
+  if (!patch || typeof patch !== "object") throw new Error("Invalid stealth patch.");
+
+  const next = {
+    ...stealthConfig,
+    ...("enabled" in patch ? { enabled: Boolean(patch.enabled) } : {}),
+    ...("persona" in patch && STEALTH_PERSONAS[patch.persona] ? { persona: patch.persona } : {}),
+    ...("defaultClickThrough" in patch ? { defaultClickThrough: Boolean(patch.defaultClickThrough) } : {}),
+    ...("autoHideOnBlur" in patch ? { autoHideOnBlur: Boolean(patch.autoHideOnBlur) } : {})
+  };
+
+  stealthConfig = saveStealthConfig(next);
+  applyStealth(stealthConfig);
+  applyStealthToAllWindows(stealthConfig);
+
+  if (stealthConfig.defaultClickThrough !== overlayClickThrough && !windows.overlay?.isVisible()) {
+    overlayClickThrough = stealthConfig.defaultClickThrough;
+  }
+
+  broadcast("stealth:changed", { config: stealthConfig, overlayClickThrough });
+  return { config: stealthConfig, overlayClickThrough };
+});
+
+ipcMain.handle("stealth:setClickThrough", async (event, enabled) => {
+  if (!getTrustedWindowFromEvent(event)) throw new Error("Untrusted stealth update.");
+  return setOverlayClickThrough(enabled);
+});
+
+ipcMain.handle("stealth:panic", async (event) => {
+  if (!getTrustedWindowFromEvent(event)) throw new Error("Untrusted stealth update.");
+  return panicToggleVisibility();
 });
 
 app.whenReady().then(async () => {
