@@ -310,6 +310,18 @@ function sessionPartnerLabel(session: SessionSetup): string {
   return session.company || "Company not set";
 }
 
+function sessionDisplayName(session: SessionSetup): string {
+  if (session.mode === "meeting") return session.meetingTopic || session.title || "Untitled meeting";
+  return session.role || session.title || "Untitled interview";
+}
+
+function answerText(answer: AnswerDraft | null): string {
+  if (!answer) return "";
+  if (answer.stages.structured.trim()) return answer.stages.structured.trim();
+  if (answer.stages.bullets.length) return answer.stages.bullets.join("\n");
+  return "";
+}
+
 function App() {
   const initialPage = getInitialPage();
   const [activePage, setActivePage] = useState<AppPage>(initialPage);
@@ -834,61 +846,17 @@ function App() {
   };
 
   return (
-    <main className="console-app-frame">
-      <header className="console-topbar">
-        <div className="brand-lockup console-brand-lockup">
-          <div className="brand-mark">
-            <MonitorDot size={22} strokeWidth={2.4} />
-          </div>
-          <div>
-            <span className="eyebrow">Local command console</span>
-            <h1>Second Chair</h1>
-          </div>
+    <main className="console-app-frame console-reference-shell">
+      <header className="reference-titlebar">
+        <div className="reference-brand">
+          <div className="reference-logo"><MonitorDot size={20} /></div>
+          <strong>Second Chair</strong>
+          <span>Command Console</span>
         </div>
-
-        <div className="console-profile-strip" aria-label="Profile and session">
-          <label className="console-profile-select" title="Profile switching is local to this device">
-            <UserRoundCheck size={15} />
-            <select value={activeProfile.id} onChange={(event) => void selectProfile(event.target.value)}>
-              {profiles.map((profile) => (
-                <option key={profile.id} value={profile.id}>{profile.name}</option>
-              ))}
-            </select>
-          </label>
-          <button className="console-profile-add" type="button" title="Create local profile" aria-label="Create local profile" onClick={() => void createProfile()}>
-            <Plus size={14} />
-          </button>
-          <span className="console-status-chip">{session.mode === "meeting" ? "Meeting" : roundLabel(session.round)}</span>
-          <span className="console-status-chip primary">{sessionContextLabel(session)}</span>
-          <span className="console-status-chip">{sessionPartnerLabel(session)}</span>
-        </div>
-
-        <div className="console-actions" aria-label="Utilities">
-          <button className={`console-live-chip ${micEnabled || systemEnabled ? "active" : ""}`} type="button" title="Live capture state">
-            <Radio size={13} />
-            {micEnabled || systemEnabled ? "Listening" : "Idle"}
-          </button>
-          <button className="icon-button" type="button" title="Knowledge" aria-label="Open knowledge drawer" onClick={() => setDrawer("knowledge")}>
-            <Database size={16} />
-          </button>
-          <button className="icon-button" type="button" title="Prompt behavior" aria-label="Open prompt behavior drawer" onClick={() => setDrawer("prompts")}>
-            <SlidersHorizontal size={16} />
-          </button>
-          <button className="icon-button" type="button" title="Audit and history" aria-label="Open audit and history drawer" onClick={() => setDrawer("review")}>
-            <History size={16} />
-          </button>
-          <button className="icon-button" type="button" title="Settings" aria-label="Open settings drawer" onClick={() => setDrawer("settings")}>
-            <Settings2 size={16} />
-          </button>
-          <button className="icon-button" type="button" title="Floating overlay window" aria-label="Open floating overlay window" onClick={openOverlay}>
-            <MonitorDot size={16} />
-          </button>
-          <button className="icon-button" type="button" title="Detached answer window" aria-label="Open detached answer window" onClick={openAnswerWindow}>
-            <ExternalLink size={16} />
-          </button>
-          <button className="icon-button" type="button" title="Hide overlay windows" aria-label="Hide overlay windows" onClick={hideOverlays}>
-            <EyeOff size={16} />
-          </button>
+        <div className="reference-window-actions" aria-hidden="true">
+          <span />
+          <span />
+          <span />
         </div>
       </header>
 
@@ -900,26 +868,52 @@ function App() {
         />
       )}
 
-      <div className="console-readiness-row" aria-label="Session readiness">
-        <Fact label="Setup" value={setupReady ? "Ready" : "Needs context"} />
-        <Fact label="Knowledge" value={`${indexedDocumentCount}/${documents.length} indexed`} />
-        <Fact label="Capture" value={liveReady ? "Active" : "Idle"} />
-        <Fact label="Audit" value={reviewReady || auditEvents.length ? `${questions.length + answerDrafts.length + auditEvents.length} events` : "No events"} />
-      </div>
+      <section className="reference-toolbar" aria-label="Session controls">
+        <label className="reference-profile-select">
+          <span>Profile</span>
+          <div>
+            <UserRoundCheck size={16} />
+            <select value={activeProfile.id} onChange={(event) => void selectProfile(event.target.value)}>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>{profile.name}</option>
+              ))}
+            </select>
+          </div>
+        </label>
+        <SegmentedControl
+          label="Mode"
+          value={session.mode}
+          options={[
+            { label: "Interview", value: "interview" },
+            { label: "Meeting", value: "meeting" },
+          ]}
+          onChange={(nextMode) => void patchSession({
+            mode: nextMode,
+            title: nextMode === "meeting"
+              ? buildMeetingTitle(session.meetingTopic, session.meetingAudience)
+              : buildSessionTitle(session.role, session.company),
+          })}
+        />
+        <SelectField label="Language" value={session.language} options={languageOptions} onChange={(language) => void patchSession({ language })} />
+        <div className="reference-toolbar-actions">
+          <button className="reference-icon-action" type="button" onClick={() => setDrawer("knowledge")}><Database size={20} /><span>Knowledge</span></button>
+          <button className="reference-icon-action" type="button" onClick={() => setDrawer("review")}><History size={20} /><span>Audit Log</span></button>
+          <button className="reference-icon-action" type="button" onClick={() => setDrawer("settings")}><Settings2 size={20} /><span>Settings</span></button>
+          <button className="reference-detach-button" type="button" onClick={openAnswerWindow}><ExternalLink size={17} />Detach Answer</button>
+        </div>
+      </section>
 
-      <section className="console-workspace" aria-label="Second Chair command workspace">
-        <ConsoleSetupRail
-          documents={documents}
-          onAddPastedDocument={addPastedDocument}
-          onDeleteDocument={deleteDocument}
-          onOpenKnowledge={() => setDrawer("knowledge")}
-          onSessionChange={setSession}
-          onStartNewSession={startNewSession}
-          onUploadDocument={uploadDocument}
-          languageNote={languageNote}
-          languageOptions={languageOptions}
-          readinessScore={readinessScore}
+      <section className="reference-workspace" aria-label="Second Chair workspace">
+        <ReferenceSidebar
+          activeProfile={activeProfile}
+          profiles={profiles}
           session={session}
+          questions={questions}
+          answerDrafts={answerDrafts}
+          transcript={transcript}
+          onCreateProfile={createProfile}
+          onSelectProfile={selectProfile}
+          onStartNewSession={startNewSession}
         />
 
         <LiveAssistPage
@@ -946,13 +940,17 @@ function App() {
           onUpdateQuestionStatus={updateQuestionStatus}
         />
 
-        <ConsoleAuditRail
+        <ReferenceAnswerPanel
           answerDrafts={answerDrafts}
-          auditEvents={auditEvents}
-          documents={documents}
-          onArchive={() => setDrawer("review")}
-          questions={questions}
-          transcript={transcript}
+          answeringQuestionIds={answeringQuestionIds}
+          isAnswering={isAnswering}
+          onAnswerQuestion={answerQuestion}
+          onUpdateAnswerMetadata={updateAnswerMetadata}
+          onUpdateQuestionStatus={updateQuestionStatus}
+          questions={activeQuestions}
+          selectedQuestion={selectedQuestion}
+          setSelectedQuestionId={setSelectedQuestionId}
+          session={session}
         />
       </section>
 
@@ -1023,6 +1021,227 @@ function UtilityDrawer({
         </div>
       </aside>
     </div>
+  );
+}
+
+function ReferenceSidebar({
+  activeProfile,
+  profiles,
+  session,
+  questions,
+  answerDrafts,
+  transcript,
+  onCreateProfile,
+  onSelectProfile,
+  onStartNewSession,
+}: {
+  activeProfile: LocalProfile;
+  profiles: LocalProfile[];
+  session: SessionSetup;
+  questions: QuestionCard[];
+  answerDrafts: AnswerDraft[];
+  transcript: TranscriptEvent[];
+  onCreateProfile: () => Promise<void>;
+  onSelectProfile: (profileId: string) => Promise<void>;
+  onStartNewSession: (sessionInput?: Partial<SessionSetup>) => Promise<boolean>;
+}) {
+  const answered = questions.filter((question) => question.status === "answered" || question.status === "saved").length;
+  const elapsed = transcript.length ? `${Math.max(1, Math.round(transcript.length * 1.5))}m` : "0m";
+  const currentTitle = sessionDisplayName(session);
+
+  return (
+    <aside className="reference-sidebar" aria-label="Profiles and sessions">
+      <section className="reference-sidebar-section">
+        <div className="reference-sidebar-title">
+          <span>Profile</span>
+          <button type="button" onClick={() => void onCreateProfile()}>
+            <Plus size={15} />
+            <span className="label-wide">New Profile</span>
+            <span className="label-compact">New</span>
+          </button>
+        </div>
+        <div className="reference-profile-list">
+          {profiles.map((profile) => (
+            <button
+              className={`reference-profile-row ${profile.id === activeProfile.id ? "active" : ""}`}
+              key={profile.id}
+              type="button"
+              onClick={() => void onSelectProfile(profile.id)}
+            >
+              <UserRoundCheck size={16} />
+              <span>{profile.name}</span>
+              {profile.id === activeProfile.id && <strong>Default</strong>}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="reference-sidebar-section reference-session-list">
+        <div className="reference-sidebar-title">
+          <span>Sessions</span>
+          <button type="button" onClick={() => void onStartNewSession(session)}>
+            <Plus size={15} />
+            New
+          </button>
+        </div>
+        <div className="reference-session-group-label">Today</div>
+        <button className="reference-session-row active" type="button">
+          <span className="reference-session-dot" />
+          <span>{currentTitle}</span>
+          <time>{questions.length || answerDrafts.length ? `${answered}/${questions.length}` : "Now"}</time>
+          <small>{elapsed}</small>
+        </button>
+        <button className="reference-session-row muted" type="button" onClick={() => void onStartNewSession(session)}>
+          <span className="reference-session-dot" />
+          <span>Start fresh session</span>
+          <time>Archive</time>
+          <small>New</small>
+        </button>
+      </section>
+
+      <section className="reference-current-session">
+        <div>
+          <span>Current Session</span>
+          <strong>{currentTitle}</strong>
+        </div>
+        <div className="reference-session-meter" aria-label="Session activity">
+          {Array.from({ length: 18 }).map((_, index) => (
+            <span className={index < Math.min(18, transcript.length + questions.length + 3) ? "active" : ""} key={index} />
+          ))}
+        </div>
+        <p>{questions.length} questions · {answered} answered · {elapsed}</p>
+      </section>
+
+      <footer className="reference-sidebar-footer">
+        <Mic2 size={16} />
+        <span>Microphone Array</span>
+        <strong>{transcript.length ? "Auto-saving" : "Ready"}</strong>
+      </footer>
+    </aside>
+  );
+}
+
+function ReferenceAnswerPanel({
+  answerDrafts,
+  answeringQuestionIds,
+  isAnswering,
+  onAnswerQuestion,
+  onUpdateAnswerMetadata,
+  onUpdateQuestionStatus,
+  questions,
+  selectedQuestion,
+  setSelectedQuestionId,
+  session,
+}: {
+  answerDrafts: AnswerDraft[];
+  answeringQuestionIds: string[];
+  isAnswering: boolean;
+  onAnswerQuestion: (questionId: string) => Promise<void>;
+  onUpdateAnswerMetadata: (answerId: string, metadata: Pick<AnswerDraft, "pinned" | "copiedAt">) => Promise<void>;
+  onUpdateQuestionStatus: (questionId: string, status: QuestionCard["status"]) => Promise<void>;
+  questions: QuestionCard[];
+  selectedQuestion: QuestionCard | null;
+  setSelectedQuestionId: (value: string) => void;
+  session: SessionSetup;
+}) {
+  const sortedQuestions = [...questions].sort((left, right) => right.createdAt - left.createdAt);
+  const selectedAnswer = selectedQuestion
+    ? answerDrafts.find((answer) => answer.questionId === selectedQuestion.id && answer.format === session.answerFormat)
+      || answerDrafts.find((answer) => answer.questionId === selectedQuestion.id)
+      || null
+    : null;
+  const recommended = answerText(selectedAnswer);
+  const isGenerating = selectedQuestion ? answeringQuestionIds.includes(selectedQuestion.id) : isAnswering;
+
+  const copyAnswer = async () => {
+    if (!selectedAnswer || !recommended) return;
+    await navigator.clipboard?.writeText(recommended);
+    await onUpdateAnswerMetadata(selectedAnswer.id, { copiedAt: Date.now() });
+  };
+
+  return (
+    <aside className="reference-answer-panel" aria-label="Answer panel">
+      <header className="reference-panel-header">
+        <div>
+          <span>Answer</span>
+          <h2>Recommended response</h2>
+        </div>
+        <button className="reference-panel-close" type="button" aria-label="Collapse answer panel">
+          <X size={17} />
+        </button>
+      </header>
+
+      <section className="reference-detected-box">
+        <div className="reference-box-heading">
+          <strong>Detected questions</strong>
+          <span>{sortedQuestions.length}</span>
+        </div>
+        <div className="reference-question-list">
+          {sortedQuestions.slice(0, 5).map((question) => (
+            <button
+              className={`reference-question-row ${question.id === selectedQuestion?.id ? "active" : ""}`}
+              key={question.id}
+              type="button"
+              onClick={() => setSelectedQuestionId(question.id)}
+            >
+              <span>{question.framedQuestion || question.rawText}</span>
+              <small>{question.type}</small>
+            </button>
+          ))}
+          {!sortedQuestions.length && (
+            <p className="reference-empty-copy">Questions detected from live transcript will appear here.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="reference-recommended-box">
+        <div className="reference-answer-heading">
+          <div>
+            <Sparkles size={18} />
+            <strong>Suggested Answer</strong>
+          </div>
+          <div className="reference-answer-actions">
+            <button type="button" aria-label="Copy answer" onClick={() => void copyAnswer()} disabled={!recommended}>
+              <Copy size={16} />
+            </button>
+            <button
+              type="button"
+              aria-label="Regenerate answer"
+              onClick={() => selectedQuestion && void onAnswerQuestion(selectedQuestion.id)}
+              disabled={!selectedQuestion || isGenerating}
+            >
+              <RotateCcw size={16} />
+            </button>
+          </div>
+        </div>
+        <article className="reference-answer-copy">
+          {isGenerating && !recommended && <p>Drafting your answer...</p>}
+          {!isGenerating && !recommended && (
+            <p>Select a detected question or enable live capture. A speakable answer will be generated here.</p>
+          )}
+          {recommended.split("\n").filter(Boolean).map((line, index) => (
+            <p key={`${line}-${index}`}>{line}</p>
+          ))}
+        </article>
+        <footer className="reference-answer-footer">
+          <div>
+            <span>Confidence</span>
+            <strong>{selectedAnswer ? "High" : "Pending"}</strong>
+          </div>
+          <button className="reference-insert-button" type="button" onClick={() => void copyAnswer()} disabled={!recommended}>
+            Insert
+            <ExternalLink size={16} />
+          </button>
+        </footer>
+      </section>
+
+      {selectedQuestion && (
+        <section className="reference-answer-meta">
+          <button type="button" onClick={() => void onUpdateQuestionStatus(selectedQuestion.id, "saved")}>Mark answered</button>
+          <button type="button" onClick={() => void onUpdateQuestionStatus(selectedQuestion.id, "dismissed")}>Dismiss</button>
+        </section>
+      )}
+    </aside>
   );
 }
 
@@ -1508,154 +1727,103 @@ function LiveAssistPage({
   }, [startBackendRecorder, stopRecorder, setSystemEnabled, streamingAvailable, systemEnabled]);
 
   return (
-    <section className="page-shell live-page live-coach-page" id="page-live" role="tabpanel" aria-label="Live assist">
-      <div className="page-heading live-coach-heading">
-        <div className="live-coach-title">
-          <span className="eyebrow">Live workspace</span>
-          <h2>{session.mode === "meeting" ? "Meeting Assist" : "Interview Assist"}</h2>
-          <p className="live-coach-subtitle">
-            <span className="live-coach-status-pill">
-              {micEnabled || systemEnabled
-                ? (streamingAvailable ? "Streaming live" : "Listening")
-                : "Enable Interviewer audio to start"}
-            </span>
-            {isAnswering && (
-              <span className="live-coach-status-pill working">
-                <Sparkles size={12} />
-                Generating answer
-              </span>
-            )}
-            <span className="live-coach-status-pill">
-              {activeQuestions.length} questions · {answeredCount} answered
-            </span>
-          </p>
+    <section className="reference-center" id="page-live" role="tabpanel" aria-label="Live assist">
+      <header className="reference-center-header">
+        <div className="reference-section-label">
+          <AudioWaveform size={16} />
+          <span>Setup</span>
         </div>
-        <div className="live-top-controls live-coach-controls">
-          <AudioToggle enabled={systemEnabled} icon={<MonitorDot size={17} />} label="Interviewer" onChange={toggleSystemCapture} />
-          <AudioToggle enabled={micEnabled} icon={<Mic2 size={17} />} label="You" onChange={toggleMicCapture} />
-          <AudioToggle enabled={autoAnswerEnabled} icon={<Sparkles size={17} />} label="Auto" onChange={setAutoAnswerEnabled} />
-          <button
-            className="ghost-action compact"
-            type="button"
-            onClick={() => setShowTranscriptRail((value) => !value)}
-            aria-pressed={showTranscriptRail}
-          >
-            <AudioWaveform size={16} />
-            {showTranscriptRail ? "Hide transcript" : "Show transcript"}
-          </button>
+        <div className="reference-setup-controls">
+          <label>
+            <span>Live Capture</span>
+            <select
+              value={systemEnabled ? "on" : "off"}
+              onChange={(event) => void toggleSystemCapture(event.target.value === "on")}
+            >
+              <option value="on">On</option>
+              <option value="off">Off</option>
+            </select>
+          </label>
+          <SelectField
+            label="Answer Format"
+            value={session.answerFormat}
+            options={formatOptions}
+            onChange={(answerFormat) => void onSessionPatch({ answerFormat })}
+          />
+          <SelectField
+            label="Response Role"
+            value={session.voiceProfile}
+            options={personaOptions}
+            onChange={(voiceProfile) => void onSessionPatch({ voiceProfile })}
+          />
+          <label>
+            <span>Quick Actions</span>
+            <button type="button" onClick={() => setAutoAnswerEnabled(!autoAnswerEnabled)}>
+              <Sparkles size={15} />
+              Auto {autoAnswerEnabled ? "On" : "Off"}
+            </button>
+          </label>
         </div>
-      </div>
+      </header>
 
-      <div className="live-coach-toolbar">
-        <ChipGroup
-          label="Answer format"
-          value={session.answerFormat}
-          options={formatOptions}
-          onChange={(answerFormat) => void onSessionPatch({ answerFormat })}
-        />
-        <PersonaSelector
-          voiceProfile={session.voiceProfile}
-          customVoice={session.customVoice}
-          onChange={(patch) => void onSessionPatch(patch)}
-        />
-      </div>
+      <section className="reference-live-transcript">
+        <header>
+          <div>
+            <span className={`reference-live-dot ${micEnabled || systemEnabled ? "active" : ""}`} />
+            <strong>Live Capture</strong>
+            <em>{micEnabled || systemEnabled ? (streamingAvailable ? "Streaming..." : "Listening...") : "Paused"}</em>
+          </div>
+          <div className="reference-capture-actions">
+            <AudioToggle enabled={systemEnabled} icon={<MonitorDot size={16} />} label="Interviewer" onChange={toggleSystemCapture} />
+            <AudioToggle enabled={micEnabled} icon={<Mic2 size={16} />} label="You" onChange={toggleMicCapture} />
+          </div>
+        </header>
 
-      <div className={`live-coach-layout${showTranscriptRail ? "" : " transcript-hidden"}`}>
-        <section className="coach-feed" aria-label="Detected questions and answers">
-          {!coachQuestions.length && (
-            <EmptyState
-              title="Waiting for the first question"
-              detail="Turn on Interviewer audio. When the interviewer asks something, the question and a speakable answer script will appear here."
-            />
-          )}
-          {coachQuestions.map((question) => {
-            const answer = resolveAnswer(question.id);
-            const isActive = question.id === selectedQuestion?.id;
-            const isGenerating = answeringQuestionIds.includes(question.id);
-            return (
-              <article className={`coach-card${isActive ? " active" : ""}${isGenerating ? " generating" : ""}`} key={question.id}>
-                <header className="coach-card-header">
-                  <div>
-                    <span className="coach-badge">Question detected</span>
-                    <strong>{question.framedQuestion || question.rawText}</strong>
-                    <p>{question.evaluationIntent}</p>
-                  </div>
-                  <div className="coach-card-actions">
-                    <span className="status-dot new">{question.type}</span>
-                    <button className="ghost-action compact" type="button" onClick={() => void onAnswerQuestion(question.id)} disabled={isGenerating}>
-                      <Sparkles size={15} />
-                      Regenerate
-                    </button>
-                    <button className="ghost-action compact" type="button" onClick={() => void onUpdateQuestionStatus(question.id, "dismissed")}>
-                      <X size={15} />
-                    </button>
-                  </div>
-                </header>
-                <div className="coach-script-block">
-                  <div className="coach-script-label">
-                    <WandSparkles size={16} />
-                    <span>Say this</span>
-                    {answer && (
-                      <button className="ghost-action compact" type="button" onClick={() => void copyCoachAnswer(answer)}>
-                        <Copy size={15} />
-                        Copy script
-                      </button>
-                    )}
-                  </div>
-                  <p className="coach-script">
-                    {answer?.stages.structured || (isGenerating ? "Drafting your speakable answer..." : "Answer will appear here automatically.")}
-                  </p>
-                  {Boolean(answer?.stages.bullets.length) && (
-                    <div className="coach-joggers">
-                      {answer?.stages.bullets.map((bullet) => (
-                        <span className="coach-jogger" key={bullet}>{bullet}</span>
-                      ))}
-                    </div>
-                  )}
-                  {answer?.stages.risk && <p className="coach-risk">{answer.stages.risk}</p>}
-                </div>
+        <div className="reference-transcript-list">
+          {transcript.slice(-18).map((event) => (
+            <article className="reference-transcript-row" key={event.id}>
+              <div className="reference-speaker-avatar"><UserRoundCheck size={15} /></div>
+              <strong>{event.source === "mic" ? "You" : "Interviewer"}</strong>
+              <time>{new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>
+              <p>{event.text}</p>
+            </article>
+          ))}
+          {Object.entries(interimBySource).map(([source, text]) => (
+            text ? (
+              <article className="reference-transcript-row interim" key={`interim-${source}`}>
+                <div className="reference-speaker-avatar"><AudioWaveform size={15} /></div>
+                <strong>{source === "mic" ? "You" : "Interviewer"}</strong>
+                <time>Live</time>
+                <p>{text}</p>
               </article>
-            );
-          })}
-        </section>
+            ) : null
+          ))}
+          {!transcript.length && !interimBySource.system && !interimBySource.mic && (
+            <div className="reference-transcript-empty">
+              <AudioWaveform size={26} />
+              <strong>No transcript yet</strong>
+              <span>Turn on Interviewer audio or add a note manually.</span>
+            </div>
+          )}
+        </div>
 
-        {showTranscriptRail && (
-          <aside className="live-transcript-rail" aria-label="Live transcript">
-            <PanelHeader eyebrow="Live feed" icon={<AudioWaveform size={18} />} title="Transcript" action={String(transcript.length)} />
-            <div className="live-transcript-rail-list">
-              {latestTranscript.map((event) => (
-                <article className={`transcript-rail-item ${event.source}`} key={event.id}>
-                  <strong>{event.source === "mic" ? "You" : "Interviewer"}</strong>
-                  <p>{event.text}</p>
-                </article>
-              ))}
-              {Object.entries(interimBySource).map(([source, text]) => (
-                text ? (
-                  <article className={`transcript-rail-item interim ${source}`} key={`interim-${source}`}>
-                    <strong>{source === "mic" ? "You" : "Interviewer"}</strong>
-                    <p>{text}</p>
-                  </article>
-                ) : null
-              ))}
-              {!latestTranscript.length && !interimBySource.system && !interimBySource.mic && (
-                <EmptyState title="No transcript yet" detail="Enable Interviewer audio to capture the conversation." />
-              )}
-            </div>
-            <div className="live-transcript-rail-manual">
-              <input
-                aria-label="Add transcript line"
-                placeholder="Add a line manually..."
-                value={manualText}
-                onChange={(event) => setManualText(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") void submitManualTranscript();
-                }}
-              />
-              <button className="primary-action compact" type="button" onClick={() => void submitManualTranscript()}>Add</button>
-            </div>
-          </aside>
-        )}
-      </div>
+        <div className="reference-manual-note">
+          <input
+            aria-label="Add transcript line"
+            placeholder="Add a note or key point..."
+            value={manualText}
+            onChange={(event) => setManualText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") void submitManualTranscript();
+            }}
+          />
+          <select value={manualSource} onChange={(event) => setManualSource(event.target.value as TranscriptEvent["source"])}>
+            <option value="system">Interviewer</option>
+            <option value="mic">You</option>
+          </select>
+          <button type="button" onClick={() => void submitManualTranscript()}>Add Note</button>
+        </div>
+      </section>
 
       {(liveNotice || captureNotice) && (
         <p className="live-notice live-coach-notice" role="status">{liveNotice || captureNotice}</p>

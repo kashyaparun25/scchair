@@ -74,6 +74,935 @@
   --shadow-lift: 0 22px 50px rgba(0, 0, 0, 0.45);
 }
 
+/* Reference Command Console layout: profile rail + transcript workspace + answer panel. */
+body:has(.console-reference-shell) {
+  color: #111827;
+  background: #f7f8fb;
+}
+
+.console-reference-shell {
+  width: 100vw;
+  height: 100vh;
+  min-height: 680px;
+  margin: 0;
+  overflow: hidden;
+  color: #111827;
+  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  grid-template-rows: 56px 100px minmax(0, 1fr);
+}
+
+.reference-titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 0 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #d9dee7;
+}
+
+.reference-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.reference-logo {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: #101828;
+}
+
+.reference-brand strong {
+  color: #111827;
+  font-size: 1.34rem;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+}
+
+.reference-brand span {
+  padding-left: 14px;
+  color: #1f2937;
+  border-left: 1px solid #ccd3dd;
+  font-size: 0.95rem;
+}
+
+.reference-window-actions {
+  display: flex;
+  gap: 18px;
+}
+
+.reference-window-actions span {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid #111827;
+  border-radius: 2px;
+  opacity: 0.8;
+}
+
+.reference-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(260px, 1fr) minmax(190px, auto) auto;
+  gap: 24px;
+  align-items: center;
+  padding: 16px 22px;
+  background: #ffffff;
+  border-bottom: 1px solid #d9dee7;
+}
+
+.reference-profile-select {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: #344054;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.reference-profile-select div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 0 12px;
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+}
+
+.reference-profile-select select,
+.reference-toolbar select,
+.reference-setup-controls select {
+  width: 100%;
+  color: #111827;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+}
+
+.reference-toolbar .segmented-control {
+  width: min(280px, 100%);
+  min-height: 50px;
+  padding: 0;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.reference-toolbar .segmented-control button {
+  min-height: 50px;
+  color: #111827;
+  border-radius: 0;
+  font-size: 0.92rem;
+}
+
+.reference-toolbar .segmented-control button.active {
+  color: #ffffff;
+  background: linear-gradient(180deg, #009688, #007d73);
+  box-shadow: none;
+}
+
+.reference-toolbar > .field-control {
+  max-width: 210px;
+}
+
+.reference-toolbar > .field-control span {
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.reference-toolbar > .field-control select {
+  min-height: 36px;
+  color: #111827;
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+}
+
+.reference-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  min-width: max-content;
+}
+
+.reference-icon-action,
+.reference-detach-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  color: #111827;
+  background: #ffffff;
+  border: 0;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.reference-icon-action {
+  display: grid;
+  gap: 4px;
+  min-width: 74px;
+  color: #1f2937;
+  font-size: 0.76rem;
+}
+
+.reference-icon-action svg {
+  margin: 0 auto;
+}
+
+.reference-detach-button {
+  padding: 0 14px;
+  border: 1px solid #cfd6e2;
+}
+
+.reference-workspace {
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr) 458px;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.reference-sidebar,
+.reference-center,
+.reference-answer-panel {
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.reference-sidebar {
+  display: grid;
+  grid-template-rows: auto 1fr auto auto;
+  border-right: 1px solid #d9dee7;
+}
+
+.reference-sidebar-section {
+  padding: 18px 16px;
+  border-bottom: 1px solid #d9dee7;
+}
+
+.reference-sidebar-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.reference-sidebar-title span,
+.reference-section-label span,
+.reference-panel-header span,
+.reference-box-heading strong {
+  color: #344054;
+  font-size: 0.76rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.reference-sidebar-title button,
+.reference-answer-meta button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1f2937;
+  background: transparent;
+  border: 0;
+  font-weight: 650;
+}
+
+.label-compact {
+  display: none;
+}
+
+.reference-profile-list,
+.reference-session-list {
+  display: grid;
+  gap: 7px;
+}
+
+.reference-profile-row,
+.reference-session-row {
+  display: grid;
+  align-items: center;
+  width: 100%;
+  min-height: 44px;
+  color: #1f2937;
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  text-align: left;
+}
+
+.reference-profile-row {
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.reference-profile-row.active {
+  color: #007d73;
+  background: #e6f5f3;
+  box-shadow: inset 3px 0 0 #009688;
+}
+
+.reference-profile-row span,
+.reference-session-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-profile-row strong {
+  color: #007d73;
+  font-size: 0.78rem;
+}
+
+.reference-session-group-label {
+  margin: 8px 6px;
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.reference-session-row {
+  grid-template-columns: 14px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.reference-session-row.active {
+  color: #007d73;
+  background: #e6f5f3;
+  box-shadow: inset 3px 0 0 #009688;
+}
+
+.reference-session-row time,
+.reference-session-row small {
+  color: #475467;
+  font-size: 0.78rem;
+}
+
+.reference-session-dot {
+  width: 8px;
+  height: 8px;
+  background: #b8c0cc;
+  border-radius: 999px;
+}
+
+.reference-session-row.active .reference-session-dot {
+  background: #009688;
+}
+
+.reference-current-session {
+  margin: 16px;
+  padding: 14px 16px;
+  border: 1px solid #d9dee7;
+  border-radius: 4px;
+}
+
+.reference-current-session span,
+.reference-current-session p {
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.reference-current-session strong {
+  display: block;
+  margin-top: 4px;
+  color: #111827;
+  font-size: 0.9rem;
+}
+
+.reference-session-meter {
+  display: flex;
+  gap: 2px;
+  margin: 12px 0;
+}
+
+.reference-session-meter span {
+  width: 4px;
+  height: 18px;
+  background: #e5e7eb;
+}
+
+.reference-session-meter span.active {
+  background: #22c55e;
+}
+
+.reference-sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 0 18px;
+  border-top: 1px solid #d9dee7;
+  color: #1f2937;
+}
+
+.reference-sidebar-footer strong {
+  margin-left: auto;
+  color: #009688;
+  font-size: 0.78rem;
+}
+
+.reference-center {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  border-right: 1px solid #d9dee7;
+}
+
+.reference-center-header {
+  display: grid;
+  grid-template-rows: 52px auto;
+  border-bottom: 1px solid #d9dee7;
+}
+
+.reference-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 22px;
+}
+
+.reference-setup-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 16px;
+  padding: 16px 22px 20px;
+}
+
+.reference-setup-controls label,
+.reference-setup-controls .field-control {
+  display: grid;
+  gap: 8px;
+}
+
+.reference-setup-controls label > span,
+.reference-setup-controls .field-control span {
+  color: #344054;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.reference-setup-controls select,
+.reference-setup-controls button,
+.reference-setup-controls .field-control select {
+  min-height: 38px;
+  padding: 0 12px;
+  color: #111827;
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+}
+
+.reference-setup-controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.reference-live-transcript {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+.reference-live-transcript > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 58px;
+  padding: 0 22px;
+  border-bottom: 1px solid #eef0f4;
+}
+
+.reference-live-transcript > header > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.reference-live-dot {
+  width: 12px;
+  height: 12px;
+  background: #b8c0cc;
+  border-radius: 999px;
+}
+
+.reference-live-dot.active {
+  background: #22c55e;
+}
+
+.reference-live-transcript strong {
+  color: #111827;
+  font-size: 0.88rem;
+}
+
+.reference-live-transcript em {
+  color: #00897b;
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.reference-capture-actions {
+  justify-content: flex-end;
+}
+
+.reference-capture-actions .audio-toggle {
+  min-height: 34px;
+  padding: 0 10px;
+  color: #1f2937;
+  background: #ffffff;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+}
+
+.reference-transcript-list {
+  display: grid;
+  align-content: start;
+  gap: 20px;
+  min-height: 0;
+  overflow: auto;
+  padding: 26px 28px;
+}
+
+.reference-transcript-row {
+  display: grid;
+  grid-template-columns: 36px 90px 92px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.reference-speaker-avatar {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: #475467;
+  background: #eef1f5;
+  border-radius: 999px;
+}
+
+.reference-transcript-row time {
+  color: #667085;
+  font-size: 0.82rem;
+}
+
+.reference-transcript-row p {
+  color: #111827;
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.reference-transcript-empty {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  min-height: 260px;
+  color: #667085;
+}
+
+.reference-transcript-empty strong {
+  font-size: 1.05rem;
+}
+
+.reference-manual-note {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 130px auto;
+  gap: 10px;
+  margin: 0 28px 20px;
+  padding: 12px;
+  border: 1px solid #cfd6e2;
+  border-radius: 4px;
+}
+
+.reference-manual-note input,
+.reference-manual-note select {
+  min-height: 38px;
+  color: #111827;
+  background: transparent;
+  border: 0;
+  outline: 0;
+}
+
+.reference-manual-note button,
+.reference-insert-button {
+  min-height: 36px;
+  padding: 0 14px;
+  color: #111827;
+  background: #f5f6f8;
+  border: 1px solid #d9dee7;
+  border-radius: 4px;
+}
+
+.reference-answer-panel {
+  display: grid;
+  grid-template-rows: 52px auto minmax(0, 1fr) auto;
+}
+
+.reference-panel-header,
+.reference-answer-heading,
+.reference-box-heading,
+.reference-answer-footer,
+.reference-answer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.reference-panel-header {
+  padding: 0 22px;
+  border-bottom: 1px solid #d9dee7;
+}
+
+.reference-panel-header h2 {
+  margin-top: 2px;
+  color: #111827;
+  font-size: 0.9rem;
+}
+
+.reference-panel-close,
+.reference-answer-actions button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: #1f2937;
+  background: transparent;
+  border: 0;
+}
+
+.reference-detected-box,
+.reference-recommended-box {
+  padding: 22px;
+  border-bottom: 1px solid #d9dee7;
+}
+
+.reference-box-heading span {
+  display: grid;
+  place-items: center;
+  min-width: 26px;
+  height: 24px;
+  color: #007d73;
+  background: #e6f5f3;
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.reference-question-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.reference-question-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 12px;
+  color: #1f2937;
+  background: #ffffff;
+  border: 1px solid #e3e7ee;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.reference-question-row.active {
+  border-color: #009688;
+  box-shadow: inset 3px 0 0 #009688;
+}
+
+.reference-question-row span {
+  line-height: 1.35;
+}
+
+.reference-question-row small {
+  color: #667085;
+  font-size: 0.72rem;
+  text-transform: capitalize;
+}
+
+.reference-empty-copy {
+  color: #667085;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.reference-recommended-box {
+  min-height: 0;
+  overflow: auto;
+  border-bottom: 0;
+}
+
+.reference-answer-heading {
+  margin-bottom: 22px;
+}
+
+.reference-answer-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reference-answer-heading strong {
+  color: #111827;
+  font-size: 0.92rem;
+}
+
+.reference-answer-heading svg {
+  color: #009688;
+}
+
+.reference-answer-copy {
+  display: grid;
+  gap: 16px;
+  color: #111827;
+  font-size: 1rem;
+  line-height: 1.58;
+}
+
+.reference-answer-footer {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid #d9dee7;
+}
+
+.reference-answer-footer span {
+  display: block;
+  color: #667085;
+  font-size: 0.78rem;
+}
+
+.reference-answer-footer strong {
+  color: #007d73;
+}
+
+.reference-insert-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 128px;
+  justify-content: space-between;
+  background: #ffffff;
+  border-bottom-color: #009688;
+}
+
+.reference-answer-meta {
+  padding: 12px 22px;
+  border-top: 1px solid #d9dee7;
+}
+
+@media (max-width: 1180px) {
+  .console-reference-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .reference-toolbar,
+  .reference-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-toolbar-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .reference-sidebar,
+  .reference-center,
+  .reference-answer-panel {
+    overflow: visible;
+  }
+}
+
+@media (max-width: 760px) {
+  .console-reference-shell {
+    grid-template-rows: auto auto auto;
+  }
+
+  .reference-titlebar,
+  .reference-toolbar {
+    padding: 14px;
+  }
+
+  .reference-titlebar,
+  .reference-toolbar,
+  .reference-setup-controls,
+  .reference-manual-note {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-titlebar {
+    display: grid;
+  }
+
+  .reference-window-actions {
+    display: none;
+  }
+
+  .reference-transcript-row {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .reference-transcript-row time,
+  .reference-transcript-row p {
+    grid-column: 2;
+  }
+}
+
+/* Final reference-layout overrides. Kept at EOF so earlier dark cockpit styles cannot leak in. */
+body:has(.console-reference-shell) {
+  color: #111827;
+  background: #ffffff;
+}
+
+.console-reference-shell {
+  width: 100vw;
+  height: 100vh;
+  min-height: 680px;
+  margin: 0;
+  overflow: hidden;
+  background: #ffffff;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.console-reference-shell .reference-workspace {
+  grid-template-columns: 340px minmax(0, 1fr) 458px;
+  background: #ffffff;
+}
+
+.reference-session-list {
+  align-content: start;
+  grid-auto-rows: min-content;
+}
+
+.reference-session-row {
+  min-height: 38px;
+}
+
+.reference-session-row.active {
+  min-height: 38px;
+}
+
+.reference-center,
+.reference-sidebar,
+.reference-answer-panel {
+  color: #111827;
+  background: #ffffff;
+}
+
+.reference-center .field-control select,
+.reference-center select,
+.reference-center input,
+.reference-answer-panel button,
+.reference-sidebar button {
+  font-family: inherit;
+}
+
+@media (max-width: 1180px) {
+  .console-reference-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
+  .console-reference-shell .reference-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-sidebar,
+  .reference-center,
+  .reference-answer-panel {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .console-reference-shell {
+    display: block;
+    height: auto;
+    min-height: 0;
+    border-radius: 0;
+  }
+
+  .reference-titlebar,
+  .reference-toolbar,
+  .reference-sidebar,
+  .reference-center,
+  .reference-answer-panel {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .reference-sidebar {
+    padding: 0;
+    overflow: visible;
+  }
+
+  .reference-sidebar-section,
+  .reference-current-session,
+  .reference-sidebar-footer {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .reference-sidebar-title {
+    gap: 8px;
+  }
+
+  .reference-sidebar-title button {
+    white-space: nowrap;
+  }
+
+  .label-wide {
+    display: none;
+  }
+
+  .label-compact {
+    display: inline;
+  }
+
+  .reference-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .reference-toolbar-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .reference-detach-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .reference-setup-grid,
+  .reference-composer {
+    grid-template-columns: 1fr;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -4642,5 +5571,83 @@ h1 {
   .answer-window-footer {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 760px) {
+  .console-app-frame.console-reference-shell {
+    display: block;
+    width: 100vw;
+    height: auto;
+    min-height: 0;
+    padding-top: 0;
+    overflow: visible;
+  }
+
+  .console-reference-shell .reference-workspace {
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .console-reference-shell .reference-sidebar,
+  .console-reference-shell .reference-center,
+  .console-reference-shell .reference-answer-panel {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .console-reference-shell .reference-sidebar {
+    display: block;
+  }
+
+  .console-reference-shell .reference-center {
+    display: block;
+  }
+
+  .console-reference-shell .reference-toolbar > *,
+  .console-reference-shell .reference-live-transcript > *,
+  .console-reference-shell .reference-center > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .console-reference-shell .reference-toolbar-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+    min-width: 0;
+  }
+
+  .console-reference-shell .reference-icon-action {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .console-reference-shell .reference-detach-button {
+    grid-column: 1 / -1;
+  }
+
+  .console-reference-shell .reference-live-transcript {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .console-reference-shell .reference-live-transcript header {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .console-reference-shell .reference-capture-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .console-reference-shell .reference-capture-actions .audio-toggle {
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
