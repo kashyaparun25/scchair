@@ -6129,3 +6129,66 @@ h1 {
   border-color: #009688;
   box-shadow: 0 0 0 3px rgba(0, 150, 136, 0.16);
 }
+
+.setup-modal .panel-header {
+  border-bottom-color: #e5e9f0;
+}
+
+.setup-modal .panel-header .eyebrow,
+.setup-modal .setup-select-row > span,
+.setup-modal .field-control > span,
+.setup-modal .persona-note,
+.setup-modal .setup-card-hint {
+  color: #667085;
+}
+
+.setup-modal .panel-header h3,
+.setup-modal .panel-header h3 svg,
+.setup-modal .setup-document strong,
+.setup-modal .upload-tile strong {
+  color: #111827;
+}
+
+.setup-modal .panel-action {
+  color: #00897b;
+  background: #e8faf7;
+  border-color: #9ee5dc;
+}
+
+.setup-modal .setup-document,
+.setup-modal .upload-tile {
+  color: #111827;
+  background: #ffffff;
+  border-color: #e1e6ef;
+}
+
+.setup-modal .setup-document span,
+.setup-modal .upload-tile span {
+  color: #667085;
+}
+
+.setup-modal .setup-document > svg,
+.setup-modal .upload-tile > svg {
+  color: #f26d56;
+  background: #fff0ed;
+  border-color: #ffc6bb;
+}
+
+.setup-modal .ghost-action,
+.setup-modal .icon-action {
+  color: #111827;
+  background: #ffffff;
+  border-color: #d8dfe9;
+}
+
+.setup-modal .ghost-action:hover,
+.setup-modal .icon-action:hover {
+  color: #007d73;
+  border-color: #9bd8d1;
+}
+
+.setup-modal .primary-action {
+  color: #111827;
+  background: linear-gradient(180deg, #f8fafc, #e7edf5);
+  border-color: #cfd8e5;
+}

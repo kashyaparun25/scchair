@@ -1020,12 +1020,19 @@ function SetupModal({
   session: SessionSetup;
 }) {
   const [draft, setDraft] = useState(session);
+  const [draftDirty, setDraftDirty] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const draftScopeRef = useRef("");
   const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
 
   useEffect(() => {
-    setDraft(session);
-  }, [session]);
+    const nextScope = `${activeProfile.id}:${session.id || "current"}`;
+    if (draftScopeRef.current !== nextScope || !draftDirty) {
+      setDraft(session);
+      setDraftDirty(false);
+      draftScopeRef.current = nextScope;
+    }
+  }, [activeProfile.id, draftDirty, session]);
 
   useEffect(() => {
     closeButtonRef.current?.focus();
@@ -1038,14 +1045,17 @@ function SetupModal({
 
   const updateDraft = (patch: Partial<SessionSetup>) => {
     setDraft((current) => ({ ...current, ...patch }));
+    setDraftDirty(true);
   };
 
   const saveSetup = async () => {
     await onSave(draft);
+    setDraftDirty(false);
   };
 
   const startSession = async () => {
     await onStartNewSession(draft);
+    setDraftDirty(false);
   };
 
   return (
