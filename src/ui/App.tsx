@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeAudioCapture } from "./hooks/useRealtimeAudioCapture";
 import { SettingsPage } from "./SettingsPage";
-import { ApiKeyGuideCard } from "./ApiKeyGuideCard";
-import { DEFAULT_API_KEY_GUIDE } from "../shared/apiKeyGuides";
 import {
   AudioWaveform,
+  BookOpen,
   BriefcaseBusiness,
   Check,
   Copy,
   Database,
   ExternalLink,
-  EyeOff,
   FileText,
   Gauge,
   History,
@@ -175,6 +173,13 @@ const responseStyleOptions: { title: string; detail: string; value: SessionSetup
   { title: "Balanced", detail: "Specific, calm, not too long", value: "balanced" },
   { title: "Executive", detail: "Shorter, sharper, top-down", value: "executive" },
   { title: "Conversational", detail: "Natural and less scripted", value: "conversational" }
+];
+
+const setupFlowSteps = [
+  { title: "Profile", detail: "Choose the local identity that owns this session." },
+  { title: "Setup", detail: "Define the interview or meeting context." },
+  { title: "Knowledge", detail: "Attach the files that should ground answers." },
+  { title: "Assist", detail: "Start capture and let answers follow the transcript." },
 ];
 
 interface BootstrapState {
@@ -347,7 +352,7 @@ function App() {
   const [appNotice, setAppNotice] = useState<{ tone: "error" | "info"; message: string } | null>(null);
   const [autoAnswerEnabled, setAutoAnswerEnabled] = useState(true);
   const autoAnsweredIdsRef = useRef<Set<string>>(new Set());
-  const [showWizard, setShowWizard] = useState(() => localStorage.getItem("interview-copilot-wizard-seen") !== "true");
+  const [showSetupModal, setShowSetupModal] = useState(true);
   const [drawer, setDrawer] = useState<AppDrawer>(initialPage === "live" || initialPage === "setup" ? null : initialPage);
   const [sttLanguageMetadata, setSttLanguageMetadata] = useState<SttLanguageMetadata | null>(null);
 
@@ -849,7 +854,7 @@ function App() {
     <main className="console-app-frame console-reference-shell">
       <header className="reference-titlebar">
         <div className="reference-brand">
-          <div className="reference-logo"><MonitorDot size={20} /></div>
+          <div className="reference-logo"><SecondChairMark /></div>
           <strong>Second Chair</strong>
           <span>Command Console</span>
         </div>
@@ -896,6 +901,7 @@ function App() {
         />
         <SelectField label="Language" value={session.language} options={languageOptions} onChange={(language) => void patchSession({ language })} />
         <div className="reference-toolbar-actions">
+          <button className="reference-icon-action" type="button" onClick={() => setShowSetupModal(true)}><BriefcaseBusiness size={20} /><span>Setup</span></button>
           <button className="reference-icon-action" type="button" onClick={() => setDrawer("knowledge")}><Database size={20} /><span>Knowledge</span></button>
           <button className="reference-icon-action" type="button" onClick={() => setDrawer("review")}><History size={20} /><span>Audit Log</span></button>
           <button className="reference-icon-action" type="button" onClick={() => setDrawer("settings")}><Settings2 size={20} /><span>Settings</span></button>
@@ -975,10 +981,35 @@ function App() {
         </UtilityDrawer>
       )}
 
-      {showWizard && <OnboardingWizard onClose={() => {
-        localStorage.setItem("interview-copilot-wizard-seen", "true");
-        setShowWizard(false);
-      }} />}
+      {showSetupModal && (
+        <SetupModal
+          activeProfile={activeProfile}
+          documents={documents}
+          languageNote={languageNote}
+          languageOptions={languageOptions}
+          profiles={profiles}
+          session={session}
+          onAddPastedDocument={addPastedDocument}
+          onClose={() => setShowSetupModal(false)}
+          onCreateProfile={createProfile}
+          onDeleteDocument={deleteDocument}
+          onOpenKnowledge={() => {
+            setShowSetupModal(false);
+            setDrawer("knowledge");
+          }}
+          onSave={async (nextSession) => {
+            await patchSession(nextSession);
+            setShowSetupModal(false);
+          }}
+          onSelectProfile={selectProfile}
+          onStartNewSession={async (nextSession) => {
+            const started = await startNewSession(nextSession);
+            if (started) setShowSetupModal(false);
+            return started;
+          }}
+          onUploadDocument={uploadDocument}
+        />
+      )}
     </main>
   );
 }
@@ -993,6 +1024,17 @@ function drawerLabel(drawer: Exclude<AppDrawer, null>): string {
   if (drawer === "prompts") return "Prompt behavior";
   if (drawer === "review") return "Audit and history";
   return "Settings";
+}
+
+function SecondChairMark() {
+  return (
+    <svg viewBox="0 0 48 48" role="img" aria-label="Second Chair logo">
+      <path className="chair-mark-seat" d="M15 25.5h17.8c3.1 0 5.7 2.5 5.7 5.7v1.3H18.8c-2.1 0-3.8-1.7-3.8-3.8v-3.2Z" />
+      <path className="chair-mark-back" d="M13.2 8.5h2.4c2 0 3.7 1.5 4 3.4l2 13.6h-5.2L13.2 8.5Z" />
+      <path className="chair-mark-frame" d="M18 32.5v7m18-7v7M16.5 39.5h22" />
+      <path className="chair-mark-second" d="M27.5 18.2h8.2c2.7 0 4.8 2.2 4.8 4.8v2.5h-9.8c-1.8 0-3.3-1.3-3.6-3.1l-.6-4.2Z" />
+    </svg>
+  );
 }
 
 function UtilityDrawer({
@@ -1020,6 +1062,239 @@ function UtilityDrawer({
           {children}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function SetupModal({
+  activeProfile,
+  documents,
+  languageNote,
+  languageOptions,
+  onAddPastedDocument,
+  onClose,
+  onCreateProfile,
+  onDeleteDocument,
+  onOpenKnowledge,
+  onSave,
+  onSelectProfile,
+  onStartNewSession,
+  onUploadDocument,
+  profiles,
+  session,
+}: {
+  activeProfile: LocalProfile;
+  documents: DocumentSummary[];
+  languageNote: string;
+  languageOptions: { label: string; value: string }[];
+  onAddPastedDocument: () => Promise<void>;
+  onClose: () => void;
+  onCreateProfile: () => Promise<void>;
+  onDeleteDocument: (documentId: string) => Promise<void>;
+  onOpenKnowledge: () => void;
+  onSave: (session: SessionSetup) => Promise<void>;
+  onSelectProfile: (profileId: string) => Promise<void>;
+  onStartNewSession: (sessionInput?: Partial<SessionSetup>) => Promise<boolean>;
+  onUploadDocument: (file: File) => Promise<void>;
+  profiles: LocalProfile[];
+  session: SessionSetup;
+}) {
+  const [draft, setDraft] = useState(session);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
+
+  useEffect(() => {
+    setDraft(session);
+  }, [session]);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  const updateDraft = (patch: Partial<SessionSetup>) => {
+    setDraft((current) => ({ ...current, ...patch }));
+  };
+
+  const saveSetup = async () => {
+    await onSave(draft);
+  };
+
+  const startSession = async () => {
+    await onStartNewSession(draft);
+  };
+
+  return (
+    <div className="setup-modal-backdrop" role="presentation">
+      <section className="setup-modal" role="dialog" aria-modal="true" aria-labelledby="setup-modal-title">
+        <header className="setup-modal-header">
+          <div className="setup-modal-brand">
+            <SecondChairMark />
+            <div>
+              <span>Session setup</span>
+              <h2 id="setup-modal-title">Prepare the workspace</h2>
+            </div>
+          </div>
+          <button className="reference-panel-close" type="button" aria-label="Close setup" onClick={onClose} ref={closeButtonRef}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="setup-flow-strip" aria-label="Setup flow">
+          {setupFlowSteps.map((step, index) => (
+            <article className={index < 3 ? "active" : ""} key={step.title}>
+              <span>{index + 1}</span>
+              <div>
+                <strong>{step.title}</strong>
+                <p>{step.detail}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="setup-modal-body">
+          <section className="setup-modal-card profile-card">
+            <PanelHeader eyebrow="Profile" icon={<UserRoundCheck size={18} />} title="Local identity" action={activeProfile.name} />
+            <label className="setup-select-row">
+              <span>Active profile</span>
+              <select value={activeProfile.id} onChange={(event) => void onSelectProfile(event.target.value)}>
+                {profiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>{profile.name}</option>
+                ))}
+              </select>
+            </label>
+            <button className="ghost-action compact" type="button" onClick={() => void onCreateProfile()}>
+              <Plus size={15} />
+              New profile
+            </button>
+          </section>
+
+          <section className="setup-modal-card context-card">
+            <PanelHeader eyebrow="Context" icon={<Target size={18} />} title={draft.mode === "meeting" ? "Meeting context" : "Interview context"} />
+            <SegmentedControl
+              label="Session mode"
+              value={draft.mode}
+              options={[
+                { label: "Interview", value: "interview" },
+                { label: "Meeting", value: "meeting" },
+              ]}
+              onChange={(nextMode) => updateDraft({
+                mode: nextMode,
+                title: nextMode === "meeting"
+                  ? buildMeetingTitle(draft.meetingTopic, draft.meetingAudience)
+                  : buildSessionTitle(draft.role, draft.company),
+              })}
+            />
+            <div className="setup-modal-grid">
+              {draft.mode === "meeting" ? (
+                <>
+                  <Field
+                    label="Topic"
+                    value={draft.meetingTopic}
+                    onChange={(meetingTopic) => updateDraft({
+                      meetingTopic,
+                      title: buildMeetingTitle(meetingTopic, draft.meetingAudience),
+                    })}
+                  />
+                  <Field
+                    label="Audience"
+                    value={draft.meetingAudience}
+                    onChange={(meetingAudience) => updateDraft({
+                      meetingAudience,
+                      title: buildMeetingTitle(draft.meetingTopic, meetingAudience),
+                    })}
+                  />
+                  <TextAreaField label="Goal" value={draft.meetingGoal} onChange={(meetingGoal) => updateDraft({ meetingGoal })} />
+                  <TextAreaField label="Notes" value={draft.meetingNotes} onChange={(meetingNotes) => updateDraft({ meetingNotes })} />
+                </>
+              ) : (
+                <>
+                  <Field
+                    label="Target role"
+                    value={draft.role}
+                    onChange={(role) => updateDraft({
+                      role,
+                      title: buildSessionTitle(role, draft.company),
+                    })}
+                  />
+                  <Field
+                    label="Company"
+                    value={draft.company}
+                    onChange={(company) => updateDraft({
+                      company,
+                      title: buildSessionTitle(draft.role, company),
+                    })}
+                  />
+                  <SelectField label="Round" value={draft.round} options={roundOptions} onChange={(round) => updateDraft({ round })} />
+                  <Field label="Seniority" value={draft.seniority} onChange={(seniority) => updateDraft({ seniority })} />
+                </>
+              )}
+            </div>
+          </section>
+
+          <section className="setup-modal-card knowledge-card">
+            <PanelHeader
+              eyebrow="Knowledge"
+              icon={<BookOpen size={18} />}
+              title="Grounding materials"
+              action={`${indexedDocuments}/${documents.length} indexed`}
+            />
+            <div className="setup-modal-documents">
+              {documents.slice(0, 4).map((document) => (
+                <article className="setup-document compact-document" key={document.id}>
+                  <FileText size={16} />
+                  <div>
+                    <strong>{document.name}</strong>
+                    <span>{documentStatusLabel(document.status)}</span>
+                  </div>
+                  <button className="icon-action" type="button" aria-label={`Delete ${document.name}`} onClick={() => void onDeleteDocument(document.id)}>
+                    <Trash2 size={14} />
+                  </button>
+                </article>
+              ))}
+              {!documents.length && <p className="setup-card-hint">Add a resume, JD, meeting brief, or product notes before capture.</p>}
+            </div>
+            <div className="inline-actions">
+              <DocumentUploadButton onUploadDocument={onUploadDocument} compact />
+              <button className="ghost-action compact" type="button" onClick={() => void onAddPastedDocument()}>Paste</button>
+              <button className="ghost-action compact" type="button" onClick={onOpenKnowledge}>Manage</button>
+            </div>
+          </section>
+
+          <section className="setup-modal-card behavior-card">
+            <PanelHeader eyebrow="Behavior" icon={<WandSparkles size={18} />} title="Answer behavior" />
+            <div className="setup-modal-grid">
+              <SelectField
+                label="Response style"
+                value={draft.responseStyle}
+                options={responseStyleOptions.map((option) => ({ label: option.title, value: option.value }))}
+                onChange={(responseStyle) => updateDraft({ responseStyle })}
+              />
+              <SelectField label="Answer format" value={draft.answerFormat} options={formatOptions} onChange={(answerFormat) => updateDraft({ answerFormat })} />
+              <SelectField label="Language" value={draft.language} options={languageOptions} onChange={(language) => updateDraft({ language })} />
+              <PersonaSelector
+                voiceProfile={draft.voiceProfile}
+                customVoice={draft.customVoice}
+                onChange={(patch) => updateDraft(patch)}
+              />
+            </div>
+            <p className="persona-note">{languageNote}</p>
+          </section>
+        </div>
+
+        <footer className="setup-modal-footer">
+          <button className="ghost-action" type="button" onClick={onClose}>Cancel</button>
+          <button className="ghost-action" type="button" onClick={() => void saveSetup()}>Save setup</button>
+          <button className="primary-action" type="button" onClick={() => void startSession()}>
+            <Play size={17} />
+            Start fresh session
+          </button>
+        </footer>
+      </section>
     </div>
   );
 }
@@ -1728,41 +2003,20 @@ function LiveAssistPage({
 
   return (
     <section className="reference-center" id="page-live" role="tabpanel" aria-label="Live assist">
-      <header className="reference-center-header">
+      <header className="reference-center-header compact">
         <div className="reference-section-label">
           <AudioWaveform size={16} />
-          <span>Setup</span>
+          <div>
+            <span>Live transcript</span>
+            <strong>{sessionDisplayName(session)}</strong>
+          </div>
         </div>
-        <div className="reference-setup-controls">
-          <label>
-            <span>Live Capture</span>
-            <select
-              value={systemEnabled ? "on" : "off"}
-              onChange={(event) => void toggleSystemCapture(event.target.value === "on")}
-            >
-              <option value="on">On</option>
-              <option value="off">Off</option>
-            </select>
-          </label>
-          <SelectField
-            label="Answer Format"
-            value={session.answerFormat}
-            options={formatOptions}
-            onChange={(answerFormat) => void onSessionPatch({ answerFormat })}
-          />
-          <SelectField
-            label="Response Role"
-            value={session.voiceProfile}
-            options={personaOptions}
-            onChange={(voiceProfile) => void onSessionPatch({ voiceProfile })}
-          />
-          <label>
-            <span>Quick Actions</span>
-            <button type="button" onClick={() => setAutoAnswerEnabled(!autoAnswerEnabled)}>
-              <Sparkles size={15} />
-              Auto {autoAnswerEnabled ? "On" : "Off"}
-            </button>
-          </label>
+        <div className="reference-live-actions">
+          <button type="button" onClick={() => setAutoAnswerEnabled(!autoAnswerEnabled)} aria-pressed={autoAnswerEnabled}>
+            <Sparkles size={15} />
+            Auto {autoAnswerEnabled ? "On" : "Off"}
+          </button>
+          <span>{session.answerFormat.replace("-", " ")}</span>
         </div>
       </header>
 
@@ -2526,79 +2780,6 @@ function Notice({
       <button className="icon-button" type="button" aria-label="Dismiss notice" onClick={onDismiss}>
         <Check size={15} />
       </button>
-    </div>
-  );
-}
-
-function OnboardingWizard({ onClose }: { onClose: () => void }) {
-  const steps = [
-    {
-      title: "Add your NVIDIA API key",
-      detail: "Second Chair defaults to NVIDIA for answers, live captions, and document search. You can switch providers anytime from Settings.",
-      content: (
-        <>
-          <ApiKeyGuideCard guide={DEFAULT_API_KEY_GUIDE} compact />
-          <p className="wizard-note">
-            Prefer OpenAI, Gemini, or Claude? Go to Settings, pick another provider, and follow its key guide.
-          </p>
-        </>
-      ),
-    },
-    {
-      title: "Set the context",
-      detail: "Open Setup, choose Interview or Meeting, and add the role, round, and any documents (resume, JD, notes) that should ground every answer."
-    },
-    {
-      title: "Run Live Assist",
-      detail: "On the Live tab, turn on Interviewer (and You) audio. Detected questions and a speakable answer appear automatically. Open the floating overlay window from the top bar during real calls."
-    }
-  ];
-  const [stepIndex, setStepIndex] = useState(0);
-  const nextButtonRef = useRef<HTMLButtonElement>(null);
-  const step = steps[stepIndex];
-  const isLast = stepIndex === steps.length - 1;
-
-  useEffect(() => {
-    nextButtonRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
-
-  return (
-    <div className="wizard-backdrop" role="presentation">
-      <section className="wizard-dialog" role="dialog" aria-modal="true" aria-labelledby="wizard-title">
-        <span className="eyebrow">Product tour</span>
-        <h2 id="wizard-title">{step.title}</h2>
-        <p>{step.detail}</p>
-        {"content" in step && step.content}
-        <div className="wizard-progress" aria-label={`Step ${stepIndex + 1} of ${steps.length}`}>
-          {steps.map((item, index) => (
-            <span className={index <= stepIndex ? "active" : ""} key={item.title} />
-          ))}
-        </div>
-        <div className="wizard-actions">
-          <button className="ghost-action" type="button" onClick={onClose}>
-            Skip
-          </button>
-          <button
-            className="primary-action"
-            type="button"
-            ref={nextButtonRef}
-            onClick={() => {
-              if (isLast) {
-                onClose();
-                return;
-              }
-              setStepIndex((index) => index + 1);
-            }}
-          >
-            {isLast ? "Finish" : "Next"}
-          </button>
-        </div>
-      </section>
     </div>
   );
 }
