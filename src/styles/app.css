@@ -1,10 +1,10 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap");
 
 :root {
   color-scheme: dark;
   color: #e7ecf3;
   background: #070b14;
-  font-family: "Geist", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
@@ -3799,6 +3799,531 @@ h1 {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+}
+
+/* Cockpit visual overhaul: dark command console + compact profile/session structure. */
+.console-app-frame {
+  width: min(1540px, calc(100vw - 28px));
+  height: calc(100vh - 28px);
+  min-height: 720px;
+  margin: 14px auto;
+  padding: 0;
+  gap: 0;
+  overflow: hidden;
+  color: #e7edf4;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), transparent 18%),
+    radial-gradient(circle at 26% 0%, rgba(20, 184, 166, 0.12), transparent 34%),
+    #090d10;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  box-shadow:
+    0 26px 80px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.console-topbar,
+.console-readiness-row,
+.console-setup-rail,
+.console-audit-rail,
+.console-workspace .live-coach-page {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.console-topbar {
+  position: static;
+  min-height: 72px;
+  padding: 11px 16px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.01)),
+    #0b1015;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.console-brand-lockup {
+  min-width: 270px;
+}
+
+.console-brand-lockup .brand-mark {
+  width: 44px;
+  height: 44px;
+  background: #111821;
+  border-color: rgba(148, 163, 184, 0.26);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.console-brand-lockup .eyebrow {
+  color: #93a4b7;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+}
+
+.console-topbar h1 {
+  color: #f7fafc;
+  font-size: 1.05rem;
+  line-height: 1.05;
+}
+
+.console-profile-strip {
+  gap: 8px;
+}
+
+.console-profile-select,
+.console-profile-add,
+.console-live-chip,
+.console-status-chip,
+.console-topbar .icon-button {
+  min-height: 36px;
+  color: #d9e2ec;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.console-profile-select,
+.console-status-chip {
+  padding-inline: 12px;
+}
+
+.console-profile-select {
+  max-width: 210px;
+}
+
+.console-profile-select select {
+  max-width: 148px;
+  font-weight: 650;
+}
+
+.console-profile-add,
+.console-topbar .icon-button {
+  width: 36px;
+}
+
+.console-live-chip {
+  color: #d8e1ea;
+}
+
+.console-live-chip.active {
+  color: #78f0ad;
+  background: rgba(34, 197, 94, 0.11);
+  border-color: rgba(74, 222, 128, 0.34);
+}
+
+.console-status-chip {
+  max-width: 260px;
+  color: #c5d0dc;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.console-status-chip.primary {
+  color: #bffcf1;
+  background: rgba(20, 184, 166, 0.13);
+  border-color: rgba(45, 212, 191, 0.36);
+}
+
+.console-actions {
+  gap: 8px;
+}
+
+.console-topbar .icon-button:hover,
+.console-profile-add:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(226, 232, 240, 0.32);
+}
+
+.console-readiness-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+  background: #0c1218;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.console-readiness-row .fact {
+  min-height: 58px;
+  padding: 12px 18px;
+  background: transparent;
+  border: 0;
+  border-right: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 0;
+}
+
+.console-readiness-row .fact:last-child {
+  border-right: 0;
+}
+
+.console-readiness-row .fact span {
+  color: #8d9bae;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.console-readiness-row .fact strong {
+  color: #eaf0f7;
+  font-size: 0.95rem;
+  font-weight: 650;
+}
+
+.console-workspace {
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr) minmax(310px, 360px);
+  gap: 0;
+  min-height: 0;
+  background: #080c10;
+}
+
+.console-setup-rail,
+.console-audit-rail {
+  max-height: calc(100vh - 160px);
+  padding: 18px;
+  color: #e8eef5;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.024), transparent 40%),
+    #0c1218;
+  border-right: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.console-audit-rail {
+  border-right: 0;
+  border-left: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.rail-header {
+  padding-bottom: 13px;
+  border-color: rgba(148, 163, 184, 0.16);
+}
+
+.rail-header h2 {
+  color: #f6f9fc;
+  font-size: 1.06rem;
+  letter-spacing: -0.01em;
+}
+
+.rail-header .eyebrow,
+.rail-section .panel-header .eyebrow,
+.console-workspace .panel-header .eyebrow {
+  color: #8fa0b4;
+  letter-spacing: 0.13em;
+}
+
+.readiness-stat {
+  color: #7cc5ff;
+  background: rgba(96, 165, 250, 0.13);
+  border-color: rgba(96, 165, 250, 0.32);
+}
+
+.rail-section {
+  gap: 12px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+}
+
+.rail-section .panel-header {
+  border-color: rgba(148, 163, 184, 0.14);
+}
+
+.rail-section .panel-header h3 {
+  color: #f7fafc;
+}
+
+.rail-section .field-control span,
+.console-workspace .field-control span,
+.voice-selector .field-control span {
+  color: #94a3b8;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.rail-section .field-control input,
+.rail-section .field-control select,
+.rail-section .field-control textarea,
+.console-workspace .field-control input,
+.console-workspace .field-control select,
+.console-workspace .field-control textarea {
+  min-height: 40px;
+  color: #f8fafc;
+  background: #0a0f14;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+
+.rail-section .field-control textarea {
+  min-height: 92px;
+}
+
+.rail-section .field-control input:hover,
+.rail-section .field-control select:hover,
+.rail-section .field-control textarea:hover,
+.console-workspace .field-control input:hover,
+.console-workspace .field-control select:hover,
+.console-workspace .field-control textarea:hover {
+  border-color: rgba(226, 232, 240, 0.32);
+}
+
+.rail-section .segmented-control {
+  padding: 3px;
+  background: #080c10;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 9px;
+}
+
+.rail-section .segmented-control button {
+  min-height: 38px;
+  color: #95a4b7;
+  border-radius: 7px;
+}
+
+.rail-section .segmented-control button.active {
+  color: #0c1117;
+  background: #f4f7fb;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+.persona-note,
+.setup-card-hint {
+  color: #8fa0b2;
+}
+
+.rail-document,
+.audit-event {
+  background: rgba(255, 255, 255, 0.032);
+  border-color: rgba(148, 163, 184, 0.15);
+}
+
+.rail-document strong,
+.audit-event strong {
+  color: #eaf0f7;
+}
+
+.rail-document span,
+.audit-event p {
+  color: #9aa9bb;
+}
+
+.console-start-button {
+  min-height: 42px;
+  color: #04110f;
+  background: linear-gradient(180deg, #7df6d9, #28c8ad);
+  border-color: rgba(125, 246, 217, 0.45);
+  box-shadow: 0 12px 26px rgba(20, 184, 166, 0.2);
+}
+
+.console-workspace .live-coach-page {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-height: 0;
+  max-height: none;
+  padding: 0;
+  background: #080c10;
+  border-left: 0;
+  border-right: 0;
+}
+
+.console-workspace .live-coach-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+  margin: 0;
+  padding: 16px 22px 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012)),
+    #0d131a;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 0;
+}
+
+.console-workspace .live-coach-title h2 {
+  color: #f8fafc;
+  font-size: clamp(1.8rem, 2.7vw, 2.7rem);
+  font-weight: 780;
+  letter-spacing: -0.045em;
+}
+
+.console-workspace .live-coach-subtitle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 11px;
+}
+
+.console-workspace .live-coach-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
+  gap: 10px;
+  min-width: min(378px, 100%);
+}
+
+.console-workspace .audio-toggle,
+.console-workspace .ghost-action.compact {
+  min-height: 42px;
+  color: #dce5ed;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+}
+
+.console-workspace .audio-toggle.active {
+  color: #9ff5d7;
+  background: rgba(20, 184, 166, 0.13);
+  border-color: rgba(45, 212, 191, 0.34);
+}
+
+.console-workspace .live-coach-status-pill {
+  min-height: 28px;
+  color: #aebdca;
+  background: rgba(255, 255, 255, 0.045);
+  border-color: rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.console-workspace .live-coach-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 320px);
+  align-items: start;
+  gap: 14px;
+  margin: 14px 22px;
+  padding: 14px;
+  background: #0d131a;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 9px;
+}
+
+.console-workspace .chip-group > span {
+  color: #94a3b8;
+}
+
+.console-workspace .chip-row {
+  gap: 8px;
+}
+
+.console-workspace .chip-row button {
+  min-height: 34px;
+  color: #c9d3dd;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(148, 163, 184, 0.2);
+  border-radius: 999px;
+}
+
+.console-workspace .chip-row button.active {
+  color: #071016;
+  background: #f8fafc;
+  border-color: #f8fafc;
+}
+
+.console-workspace .voice-selector {
+  max-width: 370px;
+}
+
+.console-workspace .live-coach-toolbar .voice-selector {
+  max-width: none;
+}
+
+.console-workspace .live-coach-layout {
+  min-height: 0;
+  gap: 16px;
+  padding: 0 22px 14px;
+  grid-template-columns: minmax(320px, 0.92fr) minmax(320px, 1.08fr);
+}
+
+.console-workspace .coach-feed,
+.console-workspace .live-transcript-rail {
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.console-workspace .coach-card,
+.console-workspace .live-transcript-rail {
+  background: #0d131a;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 9px;
+}
+
+.console-workspace .empty-state {
+  min-height: 166px;
+  color: #d8e2ec;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(96, 165, 250, 0.13), transparent 38%),
+    linear-gradient(145deg, rgba(59, 130, 246, 0.08), rgba(232, 133, 107, 0.07)),
+    #101722;
+  border: 1px dashed rgba(148, 163, 184, 0.22);
+  border-radius: 9px;
+}
+
+.console-workspace .empty-state strong {
+  color: #f8fafc;
+  font-size: 1.02rem;
+}
+
+.console-workspace .empty-state > span:last-child {
+  color: #a9b7c7;
+}
+
+.console-workspace .live-transcript-rail {
+  padding: 16px;
+}
+
+.console-workspace .live-transcript-rail-list {
+  min-height: 0;
+}
+
+.console-workspace .coach-script,
+.console-workspace .transcript-rail-item p,
+.console-workspace .live-transcript-rail-manual input,
+.audit-event p {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.audit-metric-grid .fact {
+  min-height: 78px;
+  background: rgba(255, 255, 255, 0.028);
+  border-color: rgba(148, 163, 184, 0.15);
+  border-radius: 8px;
+}
+
+.audit-metric-grid .fact span {
+  color: #8fa0b4;
+}
+
+.audit-metric-grid .fact strong {
+  color: #f4f7fb;
+}
+
+.utility-drawer-backdrop {
+  background: rgba(2, 6, 12, 0.62);
+  backdrop-filter: blur(7px);
+}
+
+.utility-drawer {
+  color: #e7edf4;
+  background: #0b1015;
+  border-left: 1px solid rgba(148, 163, 184, 0.22);
+  box-shadow: -28px 0 70px rgba(0, 0, 0, 0.48);
+}
+
+.utility-drawer-header {
+  background: #0d131a;
+  border-color: rgba(148, 163, 184, 0.18);
+}
+
+.utility-drawer-header h2 {
+  color: #f8fafc;
+}
+
+.utility-drawer .page-heading h2,
+.utility-drawer .panel-header h3 {
+  color: #f8fafc;
 }
 
 @media (max-width: 1180px) {
