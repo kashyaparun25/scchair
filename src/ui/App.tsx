@@ -20,6 +20,7 @@ import {
   Mic2,
   MonitorDot,
   Play,
+  Plus,
   Radio,
   RotateCcw,
   Settings2,
@@ -35,7 +36,9 @@ import {
 import type {
   AnswerDraft,
   AnswerFormat,
+  AuditEvent,
   DocumentSummary,
+  LocalProfile,
   PromptSetting,
   QuestionCard,
   InterviewRound,
@@ -45,8 +48,14 @@ import type {
   TranscriptEvent,
   VoiceProfile,
 } from "../shared/domain";
+import {
+  answerFormatOptions,
+  responsePersonaOptions,
+} from "../shared/domain";
+import type { SttLanguageMetadata } from "../shared/providerPresets";
 
 type AppPage = "live" | "setup" | "knowledge" | "prompts" | "review" | "settings";
+type AppDrawer = "knowledge" | "prompts" | "review" | "settings" | null;
 type BrowserSpeechRecognition = {
   continuous: boolean;
   interimResults: boolean;
@@ -125,30 +134,16 @@ declare global {
   }
 }
 
-const formatOptions: { label: string; value: AnswerFormat }[] = [
-  { label: "Bullets", value: "quick-bullets" },
-  { label: "STAR", value: "star" },
-  { label: "Technical", value: "technical" },
-  { label: "Executive", value: "executive" }
-];
+const formatOptions: { label: string; value: AnswerFormat }[] = [...answerFormatOptions];
+const responsePersonas = [...responsePersonaOptions];
+const personaOptions = responsePersonas.map(({ label, value }) => ({ label, value }));
 
-const promptProfiles: { label: string; value: VoiceProfile; note: string }[] = [
-  { label: "Product lead", value: "product-lead", note: "Outcome, sequencing, launch judgment" },
-  { label: "Staff engineer", value: "staff-engineer", note: "Architecture, influence, risk" },
-  { label: "Executive", value: "executive", note: "Crisp, strategic, board-ready" },
-  { label: "Consultant", value: "consultant", note: "Structured, commercial, direct" },
-  { label: "Custom", value: "custom", note: "Describe your own voice below" },
-];
-
-const voiceChipOptions = promptProfiles.map(({ label, value }) => ({ label, value }));
+function personaNote(value: VoiceProfile): string {
+  return responsePersonas.find((option) => option.value === value)?.note || "Clear, specific, and easy to read aloud.";
+}
 
 function roundLabel(round: InterviewRound): string {
   return roundOptions.find((option) => option.value === round)?.label || "Interview";
-}
-
-function voiceProfileLabel(profile: VoiceProfile, customVoice = ""): string {
-  if (profile === "custom") return customVoice.trim() || "Custom voice";
-  return promptProfiles.find((option) => option.value === profile)?.label || "Staff engineer";
 }
 
 function buildSessionTitle(role: string, company: string): string {
@@ -183,11 +178,14 @@ const responseStyleOptions: { title: string; detail: string; value: SessionSetup
 ];
 
 interface BootstrapState {
+  activeProfile?: LocalProfile;
+  profiles?: LocalProfile[];
   session: SessionSetup | null;
   documents: DocumentSummary[];
   transcriptEvents: TranscriptEvent[];
   questionCards: QuestionCard[];
   answerDrafts: AnswerDraft[];
+  auditEvents?: AuditEvent[];
   prompts?: PromptSetting[];
 }
 
@@ -260,6 +258,39 @@ function blankSession(documents: DocumentSummary[] = []): SessionSetup {
   };
 }
 
+function blankProfile(now = Date.now()): LocalProfile {
+  return {
+    id: "local-default",
+    name: "Default",
+    createdAt: now,
+    updatedAt: now,
+    lastActiveAt: now,
+  };
+}
+
+const baseLanguageOptions = [
+  { label: "English", value: "English" },
+  { label: "Spanish", value: "Spanish" },
+  { label: "French", value: "French" },
+  { label: "German", value: "German" },
+  { label: "Italian", value: "Italian" },
+  { label: "Portuguese", value: "Portuguese" },
+  { label: "Hindi", value: "Hindi" },
+];
+
+function languageOptionsForStt(metadata: SttLanguageMetadata | null): { label: string; value: string }[] {
+  if (metadata?.scope === "english-only") return [baseLanguageOptions[0]];
+  if (metadata?.scope === "multilingual") return baseLanguageOptions;
+  return [baseLanguageOptions[0]];
+}
+
+function languageNoteForStt(metadata: SttLanguageMetadata | null): string {
+  if (!metadata) return "Language choices follow the active speech-to-text model.";
+  if (metadata.scope === "english-only") return "The selected caption model is English-only.";
+  if (metadata.scope === "multilingual") return "The selected caption model supports multilingual input.";
+  return "Language support depends on the selected speech-to-text provider.";
+}
+
 const pageTabs: { id: AppPage; label: string; icon: typeof MessageCircle; shortLabel?: string }[] = [
   { id: "setup", label: "Setup", shortLabel: "Setup", icon: BriefcaseBusiness },
   { id: "live", label: "Live", shortLabel: "Live", icon: MessageCircle },
@@ -286,6 +317,9 @@ function App() {
   const [documents, setDocuments] = useState<DocumentSummary[]>([]);
   const [questions, setQuestions] = useState<QuestionCard[]>([]);
   const [answerDrafts, setAnswerDrafts] = useState<AnswerDraft[]>([]);
+  const [activeProfile, setActiveProfile] = useState<LocalProfile>(() => blankProfile());
+  const [profiles, setProfiles] = useState<LocalProfile[]>(() => [blankProfile()]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [transcript, setTranscript] = useState<TranscriptEvent[]>([]);
   const [mode, setMode] = useState<SessionMode>("interview");
   const [isLive, setIsLive] = useState(true);
@@ -302,16 +336,24 @@ function App() {
   const [autoAnswerEnabled, setAutoAnswerEnabled] = useState(true);
   const autoAnsweredIdsRef = useRef<Set<string>>(new Set());
   const [showWizard, setShowWizard] = useState(() => localStorage.getItem("interview-copilot-wizard-seen") !== "true");
+  const [drawer, setDrawer] = useState<AppDrawer>(initialPage === "live" || initialPage === "setup" ? null : initialPage);
+  const [sttLanguageMetadata, setSttLanguageMetadata] = useState<SttLanguageMetadata | null>(null);
 
   const applyBootstrapState = useCallback((state: BootstrapState) => {
+    const fallbackProfile = blankProfile();
+    const nextActiveProfile = state.activeProfile || fallbackProfile;
+    const nextProfiles = state.profiles?.length ? state.profiles : [nextActiveProfile];
     const loadedDocuments = state.documents || [];
     const loadedSession = state.session || blankSession(loadedDocuments);
+    setActiveProfile(nextActiveProfile);
+    setProfiles(nextProfiles);
     setDocuments(loadedDocuments);
     setSession({ ...loadedSession, documents: loadedDocuments });
     setMode(loadedSession.mode || "interview");
     setTranscript(state.transcriptEvents || []);
     setQuestions(state.questionCards || []);
     setAnswerDrafts(state.answerDrafts || []);
+    setAuditEvents(state.auditEvents || []);
     setSelectedQuestionId((current) => {
       const availableQuestions = state.questionCards || [];
       if (current && availableQuestions.some((question) => question.id === current && question.status !== "dismissed")) {
@@ -378,6 +420,51 @@ function App() {
     });
   }, [loadState]);
 
+  useEffect(() => {
+    void fetch("/api/audio/streaming")
+      .then(async (response) => (response.ok ? response.json() : Promise.reject(new Error("Streaming metadata unavailable."))))
+      .then((payload: { language?: SttLanguageMetadata }) => {
+        if (payload.language) setSttLanguageMetadata(payload.language);
+      })
+      .catch(() => setSttLanguageMetadata(null));
+  }, []);
+
+  const selectProfile = useCallback(async (profileId: string) => {
+    if (!profileId || profileId === activeProfile.id) return;
+    const response = await fetch(`/api/profiles/${encodeURIComponent(profileId)}/select`, { method: "POST" });
+    if (!response.ok) {
+      setAppNotice({ tone: "error", message: await apiErrorMessage(response, "Could not switch profile.") });
+      return;
+    }
+    const payload = (await response.json()) as { state?: BootstrapState; activeProfile?: LocalProfile; profiles?: LocalProfile[] };
+    if (payload.state) {
+      applyBootstrapState(payload.state);
+    } else {
+      setActiveProfile(payload.activeProfile || blankProfile());
+      setProfiles(payload.profiles || [payload.activeProfile || blankProfile()]);
+      await loadState();
+    }
+    resetLiveAssistState();
+    setAppNotice({ tone: "info", message: "Profile switched. Local session state was reloaded." });
+  }, [activeProfile.id, applyBootstrapState, loadState, resetLiveAssistState]);
+
+  const createProfile = useCallback(async () => {
+    const name = window.prompt("Profile name");
+    if (!name?.trim()) return;
+    const response = await fetch("/api/profiles", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim() }),
+    });
+    if (!response.ok) {
+      setAppNotice({ tone: "error", message: await apiErrorMessage(response, "Could not create profile.") });
+      return;
+    }
+    const payload = (await response.json()) as { profile: LocalProfile; profiles: LocalProfile[] };
+    setProfiles(payload.profiles);
+    await selectProfile(payload.profile.id);
+  }, [selectProfile]);
+
   const activeQuestions = useMemo(() => questions.filter((question) => question.status !== "dismissed"), [questions]);
   const selectedQuestion =
     activeQuestions.find((question) => question.id === selectedQuestionId) || activeQuestions[0] || null;
@@ -389,6 +476,14 @@ function App() {
   const liveReady = micEnabled || systemEnabled || transcript.length > 0;
   const providerReady = true;
   const reviewReady = questions.length > 0 || answerDrafts.length > 0;
+  const languageOptions = useMemo(() => languageOptionsForStt(sttLanguageMetadata), [sttLanguageMetadata]);
+  const languageNote = useMemo(() => languageNoteForStt(sttLanguageMetadata), [sttLanguageMetadata]);
+
+  useEffect(() => {
+    if (!languageOptions.some((option) => option.value === session.language)) {
+      setSession((current) => ({ ...current, language: languageOptions[0]?.value || "English" }));
+    }
+  }, [languageOptions, session.language]);
   const readinessItems = {
     setup: setupReady,
     knowledge: knowledgeReady,
@@ -466,7 +561,12 @@ function App() {
       const response = await fetch(`/api/questions/${questionId}/answer/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ format: session.answerFormat, profile: session.voiceProfile })
+        body: JSON.stringify({
+          format: session.answerFormat,
+          profile: session.voiceProfile === "custom"
+            ? (session.customVoice.trim() ? `custom:${session.customVoice.trim()}` : undefined)
+            : session.voiceProfile,
+        })
       });
       if (!response.ok) {
         setLiveNotice(await apiErrorMessage(response, "Start the session setup before generating answers."));
@@ -563,7 +663,7 @@ function App() {
         return next;
       });
     }
-  }, [session.answerFormat, session.voiceProfile]);
+  }, [session.answerFormat, session.customVoice, session.voiceProfile]);
 
   useEffect(() => {
     answerQuestionRef.current = answerQuestion;
@@ -734,108 +834,63 @@ function App() {
   };
 
   return (
-    <main className="app-frame">
-      <header className="product-header">
-        <div className="brand-lockup">
+    <main className="console-app-frame">
+      <header className="console-topbar">
+        <div className="brand-lockup console-brand-lockup">
           <div className="brand-mark">
             <MonitorDot size={22} strokeWidth={2.4} />
           </div>
           <div>
-            <span className="eyebrow">Standalone</span>
+            <span className="eyebrow">Local command console</span>
             <h1>Second Chair</h1>
           </div>
         </div>
 
-        <div className="session-status">
-          <button
-            className={`live-pill ${isLive ? "" : "paused"}`}
-            type="button"
-            aria-label={isLive ? "Pause live capture" : "Resume live capture"}
-            aria-pressed={isLive}
-            onClick={() => setIsLive((value) => !value)}
-            title={isLive ? "Live capture running — click to pause" : "Live capture paused — click to resume"}
-          >
-            <Radio size={13} />
-            {isLive ? "Live" : "Paused"}
+        <div className="console-profile-strip" aria-label="Profile and session">
+          <label className="console-profile-select" title="Profile switching is local to this device">
+            <UserRoundCheck size={15} />
+            <select value={activeProfile.id} onChange={(event) => void selectProfile(event.target.value)}>
+              {profiles.map((profile) => (
+                <option key={profile.id} value={profile.id}>{profile.name}</option>
+              ))}
+            </select>
+          </label>
+          <button className="console-profile-add" type="button" title="Create local profile" aria-label="Create local profile" onClick={() => void createProfile()}>
+            <Plus size={14} />
           </button>
-          <button
-            className="icon-button"
-            type="button"
-            title="Floating overlay window"
-            aria-label="Open floating overlay window"
-            onClick={openOverlay}
-          >
+          <span className="console-status-chip">{session.mode === "meeting" ? "Meeting" : roundLabel(session.round)}</span>
+          <span className="console-status-chip primary">{sessionContextLabel(session)}</span>
+          <span className="console-status-chip">{sessionPartnerLabel(session)}</span>
+        </div>
+
+        <div className="console-actions" aria-label="Utilities">
+          <button className={`console-live-chip ${micEnabled || systemEnabled ? "active" : ""}`} type="button" title="Live capture state">
+            <Radio size={13} />
+            {micEnabled || systemEnabled ? "Listening" : "Idle"}
+          </button>
+          <button className="icon-button" type="button" title="Knowledge" aria-label="Open knowledge drawer" onClick={() => setDrawer("knowledge")}>
+            <Database size={16} />
+          </button>
+          <button className="icon-button" type="button" title="Prompt behavior" aria-label="Open prompt behavior drawer" onClick={() => setDrawer("prompts")}>
+            <SlidersHorizontal size={16} />
+          </button>
+          <button className="icon-button" type="button" title="Audit and history" aria-label="Open audit and history drawer" onClick={() => setDrawer("review")}>
+            <History size={16} />
+          </button>
+          <button className="icon-button" type="button" title="Settings" aria-label="Open settings drawer" onClick={() => setDrawer("settings")}>
+            <Settings2 size={16} />
+          </button>
+          <button className="icon-button" type="button" title="Floating overlay window" aria-label="Open floating overlay window" onClick={openOverlay}>
             <MonitorDot size={16} />
           </button>
-          <button
-            className="icon-button"
-            type="button"
-            title="Standalone answer window"
-            aria-label="Open standalone answer window"
-            onClick={openAnswerWindow}
-          >
+          <button className="icon-button" type="button" title="Detached answer window" aria-label="Open detached answer window" onClick={openAnswerWindow}>
             <ExternalLink size={16} />
           </button>
-          <button
-            className="icon-button"
-            type="button"
-            title="Hide overlay windows"
-            aria-label="Hide overlay windows"
-            onClick={hideOverlays}
-          >
+          <button className="icon-button" type="button" title="Hide overlay windows" aria-label="Hide overlay windows" onClick={hideOverlays}>
             <EyeOff size={16} />
           </button>
         </div>
       </header>
-
-      <nav className="workflow-tabs" aria-label="Product workflow" role="tablist">
-        {pageTabs.map((tab) => {
-          const Icon = tab.icon;
-          const ready = readinessItems[tab.id];
-          const active = activePage === tab.id;
-          return (
-            <button
-              className={`workflow-tab ${active ? "active" : ""} ${ready ? "ready" : ""}`}
-              key={tab.id}
-              type="button"
-              aria-controls={`page-${tab.id}`}
-              aria-current={active ? "page" : undefined}
-              aria-selected={active}
-              role="tab"
-              onClick={() => setActivePage(tab.id)}
-              title={tab.label}
-            >
-              <Icon size={18} />
-              <span>{tab.label}</span>
-              <i className="tab-state" aria-hidden="true" data-ready={ready ? "true" : "false"} />
-            </button>
-          );
-        })}
-      </nav>
-
-      <section className="session-banner session-banner-compact" aria-label="Current session">
-        <div className="session-banner-main">
-          <span className="session-pill accent">{session.mode === "meeting" ? "Meeting" : roundLabel(session.round)}</span>
-          <span className="session-pill primary">{sessionContextLabel(session)}</span>
-          <span className="session-pill muted">{sessionPartnerLabel(session)}</span>
-          <span className="session-pill muted">{voiceProfileLabel(session.voiceProfile, session.customVoice)}</span>
-        </div>
-        <div className="session-banner-meta">
-          <span className={`session-stat readiness-stat ${readinessScore === 4 ? "complete" : ""}`} title="Setup readiness">
-            <Gauge size={13} />
-            {readinessScore}/4
-          </span>
-          <button
-            className="ghost-action compact session-new-button"
-            type="button"
-            onClick={() => void startNewSession()}
-            title="Archive current live data and start a fresh session"
-          >
-            <RotateCcw size={13} />
-            New
-          </button>
-        </div>
-      </section>
 
       {appNotice && (
         <Notice
@@ -845,7 +900,28 @@ function App() {
         />
       )}
 
-      {activePage === "live" && (
+      <div className="console-readiness-row" aria-label="Session readiness">
+        <Fact label="Setup" value={setupReady ? "Ready" : "Needs context"} />
+        <Fact label="Knowledge" value={`${indexedDocumentCount}/${documents.length} indexed`} />
+        <Fact label="Capture" value={liveReady ? "Active" : "Idle"} />
+        <Fact label="Audit" value={reviewReady || auditEvents.length ? `${questions.length + answerDrafts.length + auditEvents.length} events` : "No events"} />
+      </div>
+
+      <section className="console-workspace" aria-label="Second Chair command workspace">
+        <ConsoleSetupRail
+          documents={documents}
+          onAddPastedDocument={addPastedDocument}
+          onDeleteDocument={deleteDocument}
+          onOpenKnowledge={() => setDrawer("knowledge")}
+          onSessionChange={setSession}
+          onStartNewSession={startNewSession}
+          onUploadDocument={uploadDocument}
+          languageNote={languageNote}
+          languageOptions={languageOptions}
+          readinessScore={readinessScore}
+          session={session}
+        />
+
         <LiveAssistPage
           activeQuestions={activeQuestions}
           answerDrafts={answerDrafts}
@@ -869,37 +945,38 @@ function App() {
           onUpdateAnswerMetadata={updateAnswerMetadata}
           onUpdateQuestionStatus={updateQuestionStatus}
         />
+
+        <ConsoleAuditRail
+          answerDrafts={answerDrafts}
+          auditEvents={auditEvents}
+          documents={documents}
+          onArchive={() => setDrawer("review")}
+          questions={questions}
+          transcript={transcript}
+        />
+      </section>
+
+      {drawer && (
+        <UtilityDrawer title={drawerLabel(drawer)} onClose={() => setDrawer(null)}>
+          {drawer === "knowledge" && (
+            <KnowledgePage
+              documents={documents}
+              onAddPastedDocument={addPastedDocument}
+              onDeleteDocument={deleteDocument}
+              onUploadDocument={uploadDocument}
+            />
+          )}
+          {drawer === "prompts" && (
+            <PromptStudioPage
+              session={session}
+              onSessionPatch={patchSession}
+            />
+          )}
+          {drawer === "settings" && <SettingsPage />}
+          {drawer === "review" && <ReviewPage questions={questions} />}
+        </UtilityDrawer>
       )}
 
-      {activePage === "setup" && (
-        <SetupPage
-          documents={documents}
-          onAddPastedDocument={addPastedDocument}
-          onSessionChange={setSession}
-          onNotice={setAppNotice}
-          onStart={() => setActivePage("live")}
-          onStartNewSession={startNewSession}
-          onDeleteDocument={deleteDocument}
-          onUploadDocument={uploadDocument}
-          session={session}
-        />
-      )}
-      {activePage === "knowledge" && (
-        <KnowledgePage
-          documents={documents}
-          onAddPastedDocument={addPastedDocument}
-          onDeleteDocument={deleteDocument}
-          onUploadDocument={uploadDocument}
-        />
-      )}
-      {activePage === "prompts" && (
-        <PromptStudioPage
-          session={session}
-          onSessionPatch={patchSession}
-        />
-      )}
-      {activePage === "settings" && <SettingsPage />}
-      {activePage === "review" && <ReviewPage questions={questions} />}
       {showWizard && <OnboardingWizard onClose={() => {
         localStorage.setItem("interview-copilot-wizard-seen", "true");
         setShowWizard(false);
@@ -911,6 +988,278 @@ function App() {
 function getInitialPage(): AppPage {
   const page = new URLSearchParams(window.location.search).get("page");
   return pageTabs.some((tab) => tab.id === page) ? (page as AppPage) : "setup";
+}
+
+function drawerLabel(drawer: Exclude<AppDrawer, null>): string {
+  if (drawer === "knowledge") return "Knowledge";
+  if (drawer === "prompts") return "Prompt behavior";
+  if (drawer === "review") return "Audit and history";
+  return "Settings";
+}
+
+function UtilityDrawer({
+  children,
+  onClose,
+  title
+}: {
+  children: React.ReactNode;
+  onClose: () => void;
+  title: string;
+}) {
+  return (
+    <div className="utility-drawer-backdrop" role="presentation">
+      <aside className="utility-drawer" aria-label={title}>
+        <header className="utility-drawer-header">
+          <div>
+            <span className="eyebrow">Utility drawer</span>
+            <h2>{title}</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label={`Close ${title}`} onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
+        <div className="utility-drawer-body">
+          {children}
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+function ConsoleSetupRail({
+  documents,
+  languageNote,
+  languageOptions,
+  onAddPastedDocument,
+  onDeleteDocument,
+  onOpenKnowledge,
+  onSessionChange,
+  onStartNewSession,
+  onUploadDocument,
+  readinessScore,
+  session
+}: {
+  documents: DocumentSummary[];
+  languageNote: string;
+  languageOptions: { label: string; value: string }[];
+  onAddPastedDocument: () => Promise<void>;
+  onDeleteDocument: (documentId: string) => Promise<void>;
+  onOpenKnowledge: () => void;
+  onSessionChange: (session: SessionSetup) => void;
+  onStartNewSession: (sessionInput?: Partial<SessionSetup>) => Promise<boolean>;
+  onUploadDocument: (file: File) => Promise<void>;
+  readinessScore: number;
+  session: SessionSetup;
+}) {
+  const indexedDocuments = documents.filter((document) => document.status === "indexed").length;
+  const updateSession = (patch: Partial<SessionSetup>) => {
+    onSessionChange({ ...session, ...patch });
+  };
+  const saveAndStart = async () => {
+    await onStartNewSession(session);
+  };
+
+  return (
+    <aside className="console-setup-rail" aria-label="Session setup">
+      <header className="rail-header">
+        <div>
+          <span className="eyebrow">Session</span>
+          <h2>{session.mode === "meeting" ? "Meeting setup" : "Interview setup"}</h2>
+        </div>
+        <span className="readiness-stat compact" title="Setup readiness">
+          <Gauge size={13} />
+          {readinessScore}/4
+        </span>
+      </header>
+
+      <div className="rail-section">
+        <SegmentedControl
+          label="Mode"
+          value={session.mode}
+          options={[
+            { label: "Interview", value: "interview" },
+            { label: "Meeting", value: "meeting" },
+          ]}
+          onChange={(nextMode) => updateSession({
+            mode: nextMode,
+            title: nextMode === "meeting"
+              ? buildMeetingTitle(session.meetingTopic, session.meetingAudience)
+              : buildSessionTitle(session.role, session.company),
+          })}
+        />
+        {session.mode === "meeting" ? (
+          <>
+            <Field
+              label="Topic"
+              value={session.meetingTopic}
+              onChange={(meetingTopic) => updateSession({
+                meetingTopic,
+                title: buildMeetingTitle(meetingTopic, session.meetingAudience),
+              })}
+            />
+            <Field
+              label="Audience"
+              value={session.meetingAudience}
+              onChange={(meetingAudience) => updateSession({
+                meetingAudience,
+                title: buildMeetingTitle(session.meetingTopic, meetingAudience),
+              })}
+            />
+            <TextAreaField label="Goal" value={session.meetingGoal} onChange={(meetingGoal) => updateSession({ meetingGoal })} />
+          </>
+        ) : (
+          <>
+            <Field
+              label="Target role"
+              value={session.role}
+              onChange={(role) => updateSession({
+                role,
+                title: buildSessionTitle(role, session.company),
+              })}
+            />
+            <Field
+              label="Company"
+              value={session.company}
+              onChange={(company) => updateSession({
+                company,
+                title: buildSessionTitle(session.role, company),
+              })}
+            />
+            <SelectField label="Round" value={session.round} options={roundOptions} onChange={(round) => updateSession({ round })} />
+          </>
+        )}
+      </div>
+
+      <div className="rail-section">
+        <PanelHeader eyebrow="Behavior" icon={<UserRoundCheck size={18} />} title="Answer behavior" />
+        <SelectField
+          label="Response style"
+          value={session.responseStyle}
+          options={responseStyleOptions.map((option) => ({ label: option.title, value: option.value }))}
+          onChange={(responseStyle) => updateSession({ responseStyle })}
+        />
+        <SelectField label="Answer format" value={session.answerFormat} options={formatOptions} onChange={(answerFormat) => updateSession({ answerFormat })} />
+        <PersonaSelector
+          voiceProfile={session.voiceProfile}
+          customVoice={session.customVoice}
+          onChange={(patch) => updateSession(patch)}
+        />
+        <SelectField label="Answer language" value={session.language} options={languageOptions} onChange={(language) => updateSession({ language })} />
+        <p className="persona-note">{languageNote}</p>
+      </div>
+
+      <div className="rail-section">
+        <PanelHeader
+          eyebrow="Knowledge"
+          icon={<Upload size={18} />}
+          title="Materials"
+          action={`${indexedDocuments}/${documents.length}`}
+        />
+        <div className="rail-document-list">
+          {documents.slice(0, 4).map((document) => (
+            <article className="rail-document" key={document.id}>
+              <FileText size={15} />
+              <div>
+                <strong>{document.name}</strong>
+                <span>{documentStatusLabel(document.status)}</span>
+              </div>
+              <button className="icon-action" type="button" aria-label={`Delete ${document.name}`} onClick={() => void onDeleteDocument(document.id)}>
+                <Trash2 size={14} />
+              </button>
+            </article>
+          ))}
+          {!documents.length && <p className="setup-card-hint">Add a resume, JD, notes, or meeting brief to ground answers.</p>}
+        </div>
+        <div className="inline-actions rail-actions">
+          <DocumentUploadButton onUploadDocument={onUploadDocument} compact />
+          <button className="ghost-action compact" type="button" onClick={() => void onAddPastedDocument()}>
+            Paste
+          </button>
+          <button className="ghost-action compact" type="button" onClick={onOpenKnowledge}>
+            All
+          </button>
+        </div>
+      </div>
+
+      <button className="primary-action console-start-button" type="button" onClick={() => void saveAndStart()}>
+        <Play size={17} />
+        Start fresh session
+      </button>
+    </aside>
+  );
+}
+
+function ConsoleAuditRail({
+  answerDrafts,
+  auditEvents,
+  documents,
+  onArchive,
+  questions,
+  transcript
+}: {
+  answerDrafts: AnswerDraft[];
+  auditEvents: AuditEvent[];
+  documents: DocumentSummary[];
+  onArchive: () => void;
+  questions: QuestionCard[];
+  transcript: TranscriptEvent[];
+}) {
+  const answered = questions.filter((question) => question.status === "answered" || question.status === "saved").length;
+  const latestQuestions = [...questions].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+  const latestAuditEvents = auditEvents.slice(0, 4);
+
+  return (
+    <aside className="console-audit-rail" aria-label="Audit timeline">
+      <header className="rail-header">
+        <div>
+          <span className="eyebrow">Audit</span>
+          <h2>Session trace</h2>
+        </div>
+        <button className="ghost-action compact" type="button" onClick={onArchive}>
+          <History size={14} />
+          Open
+        </button>
+      </header>
+      <div className="audit-metric-grid">
+        <Fact label="Questions" value={String(questions.length)} />
+        <Fact label="Answered" value={String(answered)} />
+        <Fact label="Docs" value={String(documents.length)} />
+        <Fact label="Transcript" value={String(transcript.length)} />
+      </div>
+      <div className="audit-timeline">
+        {latestQuestions.map((question) => (
+          <article className="audit-event" key={question.id}>
+            <span className={`status-dot ${question.status}`} />
+            <div>
+              <strong>{question.status}</strong>
+              <p>{question.rawText}</p>
+            </div>
+          </article>
+        ))}
+        {answerDrafts.slice(-3).reverse().map((answer) => (
+          <article className="audit-event" key={answer.id}>
+            <span className="status-dot answered" />
+            <div>
+              <strong>answer {answer.format}</strong>
+              <p>{answer.stages.structured || "Draft created"}</p>
+            </div>
+          </article>
+        ))}
+        {latestAuditEvents.map((event) => (
+          <article className="audit-event" key={event.id}>
+            <span className="status-dot saved" />
+            <div>
+              <strong>{event.eventType.replace(".", " ")}</strong>
+              <p>{event.message}</p>
+            </div>
+          </article>
+        ))}
+        {!questions.length && !answerDrafts.length && !auditEvents.length && (
+          <EmptyState title="No audit events yet" detail="Questions, answers, copies, and archives will appear here." />
+        )}
+      </div>
+    </aside>
+  );
 }
 
 function LiveAssistPage({
@@ -1204,7 +1553,7 @@ function LiveAssistPage({
           options={formatOptions}
           onChange={(answerFormat) => void onSessionPatch({ answerFormat })}
         />
-        <VoiceSelector
+        <PersonaSelector
           voiceProfile={session.voiceProfile}
           customVoice={session.customVoice}
           onChange={(patch) => void onSessionPatch(patch)}
@@ -1479,7 +1828,7 @@ function SetupPage({
           </div>
         </section>
         <section className="setup-card">
-          <PanelHeader eyebrow="Voice" icon={<UserRoundCheck size={18} />} title="Response style" />
+          <PanelHeader eyebrow="Persona" icon={<UserRoundCheck size={18} />} title="Response style" />
           <div className="preference-list">
             {responseStyleOptions.map((option) => (
               <Preference
@@ -1498,7 +1847,7 @@ function SetupPage({
               options={formatOptions}
               onChange={(answerFormat) => updateSession({ answerFormat })}
             />
-            <VoiceSelector
+            <PersonaSelector
               voiceProfile={session.voiceProfile}
               customVoice={session.customVoice}
               onChange={(patch) => updateSession(patch)}
@@ -1697,7 +2046,7 @@ function PromptStudioPage({
         <div>
           <span className="eyebrow">Prompts</span>
           <h2>Prompt Studio</h2>
-          <p className="page-lede">Pick a voice and edit the system prompts that shape every answer.</p>
+          <p className="page-lede">Pick a response persona and edit the system prompts that shape every answer.</p>
         </div>
         <button className="primary-action" type="button" onClick={savePrompt} disabled={!activePrompt}>
           <Check size={17} />
@@ -1707,29 +2056,12 @@ function PromptStudioPage({
 
       <div className="prompt-grid">
         <section className="prompt-library">
-          <PanelHeader eyebrow="Profiles" icon={<Settings2 size={18} />} title="Answer personalities" />
-          {promptProfiles.map((option) => (
-            <button
-              className={`profile-card ${session.voiceProfile === option.value ? "active" : ""}`}
-              key={option.value}
-              type="button"
-              onClick={() => void onSessionPatch({ voiceProfile: option.value })}
-            >
-              <strong>
-                {option.label}
-                {session.voiceProfile === option.value && <span className="active-card-badge">Active</span>}
-              </strong>
-              <span>{option.note}</span>
-            </button>
-          ))}
-          {session.voiceProfile === "custom" && (
-            <input
-              className="voice-custom-input"
-              placeholder="Describe your voice, e.g. warm senior IC, data-driven PM..."
-              value={session.customVoice}
-              onChange={(event) => void onSessionPatch({ customVoice: event.target.value })}
-            />
-          )}
+          <PanelHeader eyebrow="Personas" icon={<Settings2 size={18} />} title="Answer personas" />
+          <PersonaSelector
+            voiceProfile={session.voiceProfile}
+            customVoice={session.customVoice}
+            onChange={(patch) => void onSessionPatch(patch)}
+          />
         </section>
         <section className="prompt-editor">
           <PanelHeader eyebrow="System prompt" icon={<SlidersHorizontal size={18} />} title="Prompt template" />
@@ -2157,7 +2489,7 @@ function SegmentedControl<TValue extends string>({
   );
 }
 
-function VoiceSelector({
+function PersonaSelector({
   voiceProfile,
   customVoice,
   onChange,
@@ -2168,16 +2500,17 @@ function VoiceSelector({
 }) {
   return (
     <div className="voice-selector">
-      <ChipGroup
-        label="Voice"
+      <SelectField
+        label="Response persona"
         value={voiceProfile}
-        options={voiceChipOptions}
+        options={personaOptions}
         onChange={(profile) => onChange({ voiceProfile: profile })}
       />
+      <p className="persona-note">{personaNote(voiceProfile)}</p>
       {voiceProfile === "custom" && (
         <input
           className="voice-custom-input"
-          placeholder="Custom voice, e.g. warm staff engineer, executive consultant..."
+          placeholder="Custom persona, e.g. warm staff engineer, executive consultant..."
           value={customVoice}
           onChange={(event) => onChange({ customVoice: event.target.value })}
         />

@@ -12,6 +12,7 @@ import {
   presetList,
   PROVIDER_PRESETS,
   resolveModels,
+  sttLanguageMetadataForModel,
   type ProviderPresetId,
 } from "../shared/providerPresets";
 import { apiKeyGuideForEndpoint } from "../shared/apiKeyGuides";
@@ -69,6 +70,13 @@ export function SettingsPage() {
   const resolvedModels = useMemo(
     () => resolveModels(preset, customModels),
     [preset, customModels],
+  );
+  const sttLanguage = useMemo(
+    () => sttLanguageMetadataForModel({
+      adapterType: preset.buildEndpoint().adapters.stt,
+      model: resolvedModels.stt,
+    }),
+    [preset, resolvedModels.stt],
   );
 
   const loadSettings = async () => {
@@ -229,8 +237,10 @@ export function SettingsPage() {
             <li><span>Answers</span><strong>{resolvedModels.llm}</strong></li>
             <li><span>Live answers</span><strong>{resolvedModels.llmLive}</strong></li>
             <li><span>Live captions</span><strong>{resolvedModels.stt}</strong></li>
+            <li><span>Caption languages</span><strong>{sttLanguage.scope === "english-only" ? "English only" : sttLanguage.scope === "multilingual" ? "Multilingual" : "Provider default"}</strong></li>
             <li><span>Document search</span><strong>{resolvedModels.embeddings}</strong></li>
           </ul>
+          <p className="settings-note">{sttLanguage.note}</p>
         </section>
 
         <StealthPanel />

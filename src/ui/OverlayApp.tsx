@@ -1,38 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeAudioCapture } from "./hooks/useRealtimeAudioCapture";
 import type { ReactNode } from "react";
-import { ApiKeyGuideCard } from "./ApiKeyGuideCard";
-import { DEFAULT_API_KEY_GUIDE } from "../shared/apiKeyGuides";
 import {
-  Bot,
   Captions,
   Copy,
   ExternalLink,
   EyeOff,
   GripHorizontal,
-  LayoutPanelLeft,
   Mic2,
   MonitorDot,
-  PanelTopOpen,
   Pause,
   Play,
-  Radio,
-  Send,
-  Settings2,
-  Sparkles,
-  X
+  Radio
 } from "lucide-react";
 import type {
   AnswerDraft,
   AnswerFormat,
   DocumentSummary,
   QuestionCard,
-  SessionMode,
   SessionSetup,
   TranscriptEvent
 } from "../shared/domain";
 
-type OverlayPanel = "answer" | "questions" | "transcript" | "settings";
 type InterviewDomain =
   | "general"
   | "behavioral"
@@ -61,28 +50,8 @@ type StealthInfo = {
   shortcuts: Record<string, string>;
   overlayClickThrough: boolean;
 };
-type BrowserSpeechRecognition = {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-};
-type BrowserSpeechRecognitionEvent = {
-  resultIndex: number;
-  results: ArrayLike<{
-    isFinal: boolean;
-    0: { transcript: string };
-  }>;
-};
-
 declare global {
   interface Window {
-    SpeechRecognition?: new () => BrowserSpeechRecognition;
-    webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
     interviewCopilot?: {
       windows?: {
         show: (role: "main" | "overlay" | "answer") => Promise<unknown>;
@@ -125,25 +94,6 @@ interface BootstrapState {
   questionCards: QuestionCard[];
   answerDrafts: AnswerDraft[];
 }
-
-const formatOptions: { label: string; value: AnswerFormat }[] = [
-  { label: "Bullets", value: "quick-bullets" },
-  { label: "STAR", value: "star" },
-  { label: "Technical", value: "technical" },
-  { label: "Executive", value: "executive" }
-];
-
-const domainOptions: { label: string; value: InterviewDomain }[] = [
-  { label: "General", value: "general" },
-  { label: "Behavioral", value: "behavioral" },
-  { label: "Technical", value: "technical-verbal" },
-  { label: "System", value: "system-design" },
-  { label: "DevOps", value: "devops-cloud" },
-  { label: "Support", value: "support" },
-  { label: "Sales Eng", value: "sales-engineering" },
-  { label: "Product/Ops", value: "product-operations" },
-  { label: "Coding", value: "coding" }
-];
 
 async function apiErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
@@ -192,30 +142,19 @@ function useLatestState(refreshMs = 1800) {
 
 function OverlayApp() {
   const { notice, refresh, setNotice, state, setState } = useLatestState();
-  const [panel, setPanel] = useState<OverlayPanel>("answer");
-  const [mode, setMode] = useState<SessionMode>("interview");
-  const [domain, setDomain] = useState<InterviewDomain>("general");
-  const [format, setFormat] = useState<AnswerFormat>("technical");
+  const [domain] = useState<InterviewDomain>("general");
+  const [format] = useState<AnswerFormat>("technical");
   const [listenEnabled, setListenEnabled] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [clickThrough, setClickThrough] = useState(false);
   const [isAnswering, setIsAnswering] = useState(false);
-  const [manualText, setManualText] = useState("");
   const [copyNotice, setCopyNotice] = useState("");
-  const [showIntroGuide, setShowIntroGuide] = useState(
-    () => localStorage.getItem("interview-copilot-overlay-guide-seen") !== "true",
-  );
-  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
   const recorderRef = useRef<{
     recorder: MediaRecorder;
     stream: MediaStream;
     segmentTimer: ReturnType<typeof setInterval> | null;
   } | null>(null);
   const backendSttUnavailableRef = useRef(false);
-
-  useEffect(() => {
-    if (state.session?.mode) setMode(state.session.mode);
-  }, [state.session?.mode]);
 
   const activeQuestion = useMemo(() => latestQuestion(state.questionCards), [state.questionCards]);
   const activeAnswer = useMemo(() => {
@@ -226,30 +165,6 @@ function OverlayApp() {
       || state.answerDrafts.find((answer) => answer.questionId === activeQuestion.id)
       || null;
   }, [format, activeQuestion, state.answerDrafts]);
-  const latestTranscript = state.transcriptEvents.slice(-5).reverse();
-
-  const appendTranscript = async (source: TranscriptEvent["source"], text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const response = await fetch("/api/transcript", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source, text: trimmed, isFinal: true })
-    });
-    if (!response.ok) {
-      setNotice(await apiErrorMessage(response, "Transcript could not be added."));
-      return;
-    }
-    const payload = await response.json() as { event: TranscriptEvent; questions: QuestionCard[] };
-    setState((current) => ({
-      ...current,
-      transcriptEvents: [...current.transcriptEvents, payload.event],
-      questionCards: payload.questions
-    }));
-    setManualText("");
-    setNotice(source === "mic" ? "Listen transcript added." : "Capture transcript added.");
-  };
-
   const applyTranscriptPayload = useCallback((payload: { event: TranscriptEvent; questions: QuestionCard[] }) => {
     setState((current) => ({
       ...current,
@@ -372,7 +287,6 @@ function OverlayApp() {
       return;
     }
     setIsAnswering(true);
-    setPanel("answer");
     const response = await fetch(`/api/questions/${activeQuestion.id}/answer`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -408,44 +322,16 @@ function OverlayApp() {
     setCopyNotice("Copied.");
   };
 
-  const openDetachedAnswer = () => {
+  const openDetachedAnswer = useCallback(() => {
     if (window.interviewCopilot?.windows?.show) {
       void window.interviewCopilot.windows.show("answer");
       return;
     }
     window.open("?view=answer", "second-chair-answer", "width=720,height=820,noopener,noreferrer");
-  };
-
-  const openMainWindow = () => {
-    if (window.interviewCopilot?.windows?.show) {
-      void window.interviewCopilot.windows.show("main");
-      return;
-    }
-    window.open("/", "second-chair-main", "width=1280,height=860,noopener,noreferrer");
-  };
-
-  const openMainSettings = () => {
-    if (window.interviewCopilot?.windows?.show) {
-      void window.interviewCopilot.windows.show("main");
-    }
-    window.open("/?page=settings", "second-chair-main", "width=1280,height=860,noopener,noreferrer");
-  };
-
-  const dismissIntroGuide = () => {
-    localStorage.setItem("interview-copilot-overlay-guide-seen", "true");
-    setShowIntroGuide(false);
-  };
+  }, []);
 
   const hideOverlay = () => {
     void window.interviewCopilot?.windows?.hide?.("overlay");
-  };
-
-  const hideAllOverlays = () => {
-    if (window.interviewCopilot?.windows?.hideOverlays) {
-      void window.interviewCopilot.windows.hideOverlays();
-      return;
-    }
-    hideOverlay();
   };
 
   const captureScreenshotPrompt = useCallback(async () => {
@@ -454,7 +340,6 @@ function OverlayApp() {
       return;
     }
     setIsCapturing(true);
-    setPanel("answer");
     try {
       const capture = await window.interviewCopilot.capture.screenshot();
       const response = await fetch("/api/overlay/screenshot-prompt", {
@@ -489,7 +374,8 @@ function OverlayApp() {
     const next = !clickThrough;
     setClickThrough(next);
     try {
-      await window.interviewCopilot?.windows?.setClickThrough?.("overlay", next);
+      const result = await window.interviewCopilot?.stealth?.setClickThrough?.(next);
+      if (typeof result?.clickThrough === "boolean") setClickThrough(result.clickThrough);
       setNotice(next ? "Click-through enabled. Use the global overlay shortcut to restore interaction." : "Click-through disabled.");
     } catch {
       setNotice("Click-through is available only in the Electron app.");
@@ -498,25 +384,25 @@ function OverlayApp() {
   };
 
   useEffect(() => {
+    let cancelled = false;
+    void window.interviewCopilot?.stealth?.get?.().then((payload) => {
+      if (!cancelled) setClickThrough(Boolean(payload.overlayClickThrough));
+    }).catch(() => {
+      // Browser preview does not expose desktop window controls.
+    });
     const removeCaptureListener = window.interviewCopilot?.shortcuts?.on?.("shortcut:captureScreenshot", () => {
       void captureScreenshotPrompt();
     });
-    const removeAnswerListener = window.interviewCopilot?.shortcuts?.on?.("shortcut:toggleAnswer", () => {
-      void answerQuestion();
-    });
-    const removeToggleOverlayListener = window.interviewCopilot?.shortcuts?.on?.("shortcut:toggleOverlay", () => {
-      setClickThrough(false);
-    });
-    const removeHideListener = window.interviewCopilot?.shortcuts?.on?.("shortcut:hideOverlays", () => {
-      setClickThrough(false);
+    const removeStealthListener = window.interviewCopilot?.shortcuts?.on?.("stealth:changed", (payload) => {
+      const next = payload as { overlayClickThrough?: boolean } | undefined;
+      if (typeof next?.overlayClickThrough === "boolean") setClickThrough(next.overlayClickThrough);
     });
     return () => {
+      cancelled = true;
       removeCaptureListener?.();
-      removeAnswerListener?.();
-      removeToggleOverlayListener?.();
-      removeHideListener?.();
+      removeStealthListener?.();
     };
-  }, [answerQuestion, captureScreenshotPrompt]);
+  }, [captureScreenshotPrompt]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -525,8 +411,6 @@ function OverlayApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
-  const manualSource: TranscriptEvent["source"] = listenEnabled ? "system" : "mic";
 
   return (
     <main className="overlay-shell" aria-label="Second Chair overlay">
@@ -541,162 +425,51 @@ function OverlayApp() {
             <Radio size={12} />
             {listenEnabled || isCapturing ? "Live" : "Idle"}
           </span>
-          <button type="button" title="Open detached answer" aria-label="Open detached answer" onClick={openDetachedAnswer}>
-            <ExternalLink size={15} />
-          </button>
-          <button type="button" title="Hide all overlays" aria-label="Hide all overlays" onClick={hideAllOverlays}>
-            <EyeOff size={15} />
-          </button>
-          <button type="button" title="Hide overlay" aria-label="Hide overlay" onClick={hideOverlay}>
-            <X size={15} />
-          </button>
         </div>
       </header>
 
-      {showIntroGuide && (
-        <section className="overlay-intro-guide" aria-label="Overlay quick start">
-          <div className="overlay-intro-copy">
-            <strong>Quick start</strong>
-            <p>
-              Second Chair defaults to NVIDIA. Add your API key in Settings, then use Listen for live captions and Answer when a question appears.
-            </p>
-          </div>
-          <div className="overlay-intro-actions">
-            <button className="ghost-action compact" type="button" onClick={openMainSettings}>
-              Open Settings
-            </button>
-            <button className="icon-button" type="button" aria-label="Dismiss quick start" onClick={dismissIntroGuide}>
-              <X size={15} />
-            </button>
-          </div>
-        </section>
-      )}
-
       <section className="overlay-controls" aria-label="Overlay controls">
-        <TogglePill icon={<MonitorDot size={15} />} label="Listen" enabled={listenEnabled} onClick={() => setListenEnabled((value) => !value)} />
+        <TogglePill icon={<Mic2 size={15} />} label="Listen" enabled={listenEnabled} onClick={() => setListenEnabled((value) => !value)} />
         <TogglePill icon={<Captions size={15} />} label={isCapturing ? "Capturing" : "Capture"} enabled={isCapturing} onClick={() => void captureScreenshotPrompt()} />
-        <select aria-label="Domain" value={domain} onChange={(event) => setDomain(event.target.value as InterviewDomain)}>
-          {domainOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-        <select aria-label="Answer format" value={format} onChange={(event) => setFormat(event.target.value as AnswerFormat)}>
-          {formatOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+        <button className="primary-action compact" type="button" onClick={() => void answerQuestion()} disabled={isAnswering || !activeQuestion}>
+          {isAnswering ? <Pause size={15} /> : <Play size={15} />}
+          {isAnswering ? "Answering" : "Answer"}
+        </button>
+        <button className="ghost-action compact" type="button" onClick={() => void copyAnswer()} disabled={!activeAnswer}>
+          <Copy size={15} />
+          Copy
+        </button>
+        <button className="ghost-action compact" type="button" onClick={hideOverlay}>
+          <EyeOff size={15} />
+          Hide
+        </button>
+        <button className="ghost-action compact" type="button" onClick={openDetachedAnswer}>
+          <ExternalLink size={15} />
+          Detach
+        </button>
       </section>
 
-      <nav className="overlay-panels" aria-label="Overlay panel">
-        <PanelButton active={panel === "answer"} icon={<Bot size={15} />} label="Answer" onClick={() => setPanel("answer")} />
-        <PanelButton active={panel === "questions"} icon={<Sparkles size={15} />} label="Questions" onClick={() => setPanel("questions")} />
-        <PanelButton active={panel === "transcript"} icon={<LayoutPanelLeft size={15} />} label="Transcript" onClick={() => setPanel("transcript")} />
-        <PanelButton active={panel === "settings"} icon={<Settings2 size={15} />} label="Settings" onClick={() => setPanel("settings")} />
-      </nav>
-
-      {panel === "answer" && (
-        <section className="overlay-panel-body">
-          <div className="overlay-question">
-            <span>{state.session?.role || "Current session"} {state.session?.company ? `at ${state.session.company}` : ""}</span>
-            <strong>{activeQuestion?.rawText || "Waiting for a detected question"}</strong>
-          </div>
-          <div className="overlay-answer-card">
-            <p>{activeAnswer?.stages.structured || "Generate or open the answer window when a question appears."}</p>
-            {Boolean(activeAnswer?.stages.bullets.length) && (
-              <ul>
-                {activeAnswer?.stages.bullets.slice(0, 3).map((bullet) => <li key={bullet}>{bullet}</li>)}
-              </ul>
-            )}
-          </div>
-          <div className="overlay-action-row">
-            <button className="primary-action compact" type="button" onClick={() => void answerQuestion()} disabled={isAnswering || !activeQuestion}>
-              {isAnswering ? <Pause size={15} /> : <Play size={15} />}
-              {isAnswering ? "Answering" : "Answer"}
-            </button>
-            <button className="ghost-action compact" type="button" onClick={() => void copyAnswer()} disabled={!activeAnswer}>
-              <Copy size={15} />
-              Copy
-            </button>
-          </div>
-        </section>
-      )}
-
-      {panel === "questions" && (
-        <section className="overlay-panel-body">
-          <div className="overlay-list">
-            {state.questionCards.filter((question) => question.status !== "dismissed").slice(-5).reverse().map((question) => (
-              <article key={question.id} className="overlay-list-item">
-                <strong>{question.rawText}</strong>
-                <span>{question.type} - {Math.round(question.confidence * 100)}%</span>
-              </article>
-            ))}
-            {!state.questionCards.length && <EmptyOverlay text="No questions detected yet." />}
-          </div>
-        </section>
-      )}
-
-      {panel === "transcript" && (
-        <section className="overlay-panel-body">
-          <div className="overlay-manual">
-            <input
-              aria-label="Add overlay transcript"
-              placeholder={listenEnabled ? "Add interviewer text..." : "Add your line..."}
-              value={manualText}
-              onChange={(event) => setManualText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void appendTranscript(manualSource, manualText);
-              }}
-            />
-            <button type="button" aria-label="Add transcript" onClick={() => void appendTranscript(manualSource, manualText)}>
-              <Send size={15} />
-            </button>
-          </div>
-          <div className="overlay-list">
-            {latestTranscript.map((event) => (
-              <article key={event.id} className="overlay-list-item">
-                <strong>{event.source === "mic" ? "You" : "Interviewer"}</strong>
-                <span>{event.text}</span>
-              </article>
-            ))}
-            {interimBySource.system ? (
-              <article className="overlay-list-item interim">
-                <strong>Interviewer</strong>
-                <span>{interimBySource.system}</span>
-              </article>
-            ) : null}
-            {!latestTranscript.length && !interimBySource.system && <EmptyOverlay text="Transcript will appear here." />}
-          </div>
-        </section>
-      )}
-
-      {panel === "settings" && (
-        <section className="overlay-panel-body">
-          <div className="overlay-settings-intro">
-            <strong>AI setup</strong>
-            <p>NVIDIA is the default provider. Open Settings in the main app to paste your API key or switch to OpenAI, Gemini, or Claude.</p>
-          </div>
-          <ApiKeyGuideCard guide={DEFAULT_API_KEY_GUIDE} compact />
-          <div className="overlay-settings-grid">
-          <Fact label="Panel" value={panel} />
-          <Fact label="Mode" value={mode} />
-          <Fact label="Domain" value={domainOptions.find((option) => option.value === domain)?.label || domain} />
-          <Fact label="Format" value={formatOptions.find((option) => option.value === format)?.label || format} />
-          <Fact label="Docs" value={`${state.documents.filter((document) => document.status === "indexed").length} indexed`} />
+      <section className="overlay-panel-body">
+        <div className="overlay-question">
+          <span>{state.session?.role || "Current question"} {state.session?.company ? `at ${state.session.company}` : ""}</span>
+          <strong>{activeQuestion?.rawText || "Waiting for a detected question"}</strong>
         </div>
-          <button className="ghost-action compact" type="button" onClick={openMainSettings}>
-            <Settings2 size={15} />
-            Open Settings
-          </button>
-          <button className="ghost-action compact" type="button" onClick={() => void refresh()}>
-            <PanelTopOpen size={15} />
-            Refresh latest state
-          </button>
-          <button className="ghost-action compact" type="button" aria-pressed={clickThrough} onClick={() => void toggleClickThrough()}>
-            <MonitorDot size={15} />
-            {clickThrough ? "Interaction off" : "Click-through"}
-          </button>
-        </section>
-      )}
+        <div className="overlay-answer-card">
+          <p>{activeAnswer?.stages.structured || "Answer preview will appear here after you capture or answer a question."}</p>
+          {Boolean(activeAnswer?.stages.bullets.length) && (
+            <ul>
+              {activeAnswer?.stages.bullets.slice(0, 3).map((bullet) => <li key={bullet}>{bullet}</li>)}
+            </ul>
+          )}
+        </div>
+        {interimBySource.system ? (
+          <div className="overlay-empty">Listening: {interimBySource.system}</div>
+        ) : null}
+        <button className="ghost-action compact" type="button" aria-pressed={clickThrough} onClick={() => void toggleClickThrough()}>
+          <MonitorDot size={15} />
+          {clickThrough ? "Interaction off" : "Click-through"}
+        </button>
+      </section>
 
       {(notice || copyNotice) && <p className="overlay-notice" role="status">{copyNotice || notice}</p>}
     </main>
@@ -720,38 +493,6 @@ function TogglePill({
       {label}
     </button>
   );
-}
-
-function PanelButton({
-  active,
-  icon,
-  label,
-  onClick
-}: {
-  active: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button className={active ? "active" : ""} type="button" aria-pressed={active} onClick={onClick}>
-      {icon}
-      {label}
-    </button>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="overlay-fact">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function EmptyOverlay({ text }: { text: string }) {
-  return <div className="overlay-empty">{text}</div>;
 }
 
 export { OverlayApp };

@@ -1,4 +1,6 @@
 import type { ProviderSettings } from "../shared/domain";
+import type { SttLanguageMetadata } from "../shared/providerPresets";
+import { sttLanguageMetadataForModel } from "../shared/providerPresets";
 import { resolveCapability } from "./providerRegistry";
 import { openAiBatchTranscriptionModel } from "./providerRegistry";
 
@@ -11,6 +13,7 @@ export interface StreamingSttCapabilities {
   transport: "websocket-pcm";
   sampleRate: number;
   endpoint: string;
+  language: SttLanguageMetadata;
 }
 
 export function resolveStreamingSttCapabilities(
@@ -29,6 +32,7 @@ export function resolveStreamingSttCapabilities(
       transport: "websocket-pcm",
       sampleRate: 16000,
       endpoint,
+      language: sttLanguageMetadataForModel({ adapterType: null, model: "browser-speech-recognition" }),
     };
   }
 
@@ -44,6 +48,10 @@ export function resolveStreamingSttCapabilities(
       transport: "websocket-pcm",
       sampleRate: 16000,
       endpoint,
+      language: sttLanguageMetadataForModel({
+        adapterType: resolved.adapterType,
+        model: resolved.model,
+      }),
     };
   }
 
@@ -54,6 +62,10 @@ export function resolveStreamingSttCapabilities(
     transport: "websocket-pcm",
     sampleRate: 16000,
     endpoint,
+    language: sttLanguageMetadataForModel({
+      adapterType: resolved.adapterType,
+      model: resolved.model,
+    }),
   };
 }
 

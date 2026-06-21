@@ -34,7 +34,51 @@ export type AnswerFormat =
   | "executive"
   | "follow-up";
 
-export type VoiceProfile = "product-lead" | "staff-engineer" | "executive" | "consultant" | "custom";
+export const answerFormatOptions = [
+  { label: "Bullets", value: "quick-bullets" },
+  { label: "STAR", value: "star" },
+  { label: "Full", value: "full" },
+  { label: "Technical", value: "technical" },
+  { label: "System design", value: "system-design" },
+  { label: "Coding", value: "coding" },
+  { label: "Executive", value: "executive" },
+  { label: "Follow-up", value: "follow-up" },
+] as const satisfies ReadonlyArray<{ label: string; value: AnswerFormat }>;
+
+export const answerFormats = answerFormatOptions.map((option) => option.value);
+
+export type ResponsePersona =
+  | "product-lead"
+  | "staff-engineer"
+  | "executive"
+  | "consultant"
+  | "support"
+  | "sales-engineer"
+  | "data-analyst"
+  | "designer"
+  | "engineering-manager"
+  | "recruiter-hiring-manager"
+  | "technical-support"
+  | "custom";
+
+export type VoiceProfile = ResponsePersona;
+
+export const responsePersonaOptions = [
+  { label: "Product lead", value: "product-lead", note: "Outcomes, sequencing, launch judgment" },
+  { label: "Staff engineer", value: "staff-engineer", note: "Architecture, influence, risk" },
+  { label: "Executive", value: "executive", note: "Crisp, strategic, business impact first" },
+  { label: "Consultant", value: "consultant", note: "Structured, hypothesis-driven, client-safe" },
+  { label: "Support", value: "support", note: "Empathetic, practical, customer-aware" },
+  { label: "Sales engineer", value: "sales-engineer", note: "Discovery, solution fit, technical value" },
+  { label: "Data analyst", value: "data-analyst", note: "Metrics, assumptions, decision clarity" },
+  { label: "Designer", value: "designer", note: "User needs, craft, product judgment" },
+  { label: "Engineering manager", value: "engineering-manager", note: "Team health, execution, ownership" },
+  { label: "Recruiter / hiring manager", value: "recruiter-hiring-manager", note: "Fit, motivation, hiring signal" },
+  { label: "Technical support", value: "technical-support", note: "Troubleshooting, clarity, customer resolution" },
+  { label: "Custom", value: "custom", note: "Describe your own response persona below" },
+] as const satisfies ReadonlyArray<{ label: string; value: ResponsePersona; note: string }>;
+
+export const responsePersonas = responsePersonaOptions.map((option) => option.value);
 
 export interface SessionSetup {
   id: string;
@@ -122,6 +166,25 @@ export interface ProviderModelSetting {
 }
 
 export type ProviderSettings = Record<ProviderCapability, ProviderModelSetting>;
+
+export interface LocalProfile {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  lastActiveAt: number;
+}
+
+export interface AuditEvent {
+  id: string;
+  profileId: string | null;
+  eventType: string;
+  entityType: string;
+  entityId: string | null;
+  message: string;
+  metadata: Record<string, unknown>;
+  createdAt: number;
+}
 
 export interface SessionArchiveSummary {
   id: string;

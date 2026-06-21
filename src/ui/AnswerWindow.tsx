@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, ExternalLink, EyeOff, GripHorizontal, Pin, RefreshCw, Sparkles, WandSparkles, X } from "lucide-react";
 import type { AnswerDraft, AnswerFormat, DocumentSummary, QuestionCard, SessionSetup, TranscriptEvent } from "../shared/domain";
+import { answerFormatOptions } from "../shared/domain";
 
 type DesktopWindowApi = Window & {
   interviewCopilot?: {
@@ -20,12 +21,7 @@ interface BootstrapState {
   answerDrafts: AnswerDraft[];
 }
 
-const formatOptions: { label: string; value: AnswerFormat }[] = [
-  { label: "Bullets", value: "quick-bullets" },
-  { label: "STAR", value: "star" },
-  { label: "Technical", value: "technical" },
-  { label: "Executive", value: "executive" }
-];
+const formatOptions: { label: string; value: AnswerFormat }[] = [...answerFormatOptions];
 
 async function apiErrorMessage(response: Response, fallback: string): Promise<string> {
   try {

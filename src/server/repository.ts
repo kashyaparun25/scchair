@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   AnswerDraft,
+  AuditEvent,
   DocumentSummary,
+  LocalProfile,
   ProviderSettings,
   PromptSetting,
   QuestionCard,
@@ -26,6 +28,8 @@ import {
 } from "./documentRetrieval";
 
 export interface RepositoryState {
+  activeProfile: LocalProfile;
+  profiles: LocalProfile[];
   session: SessionSetup | null;
   documents: DocumentSummary[];
   transcriptEvents: TranscriptEvent[];
@@ -33,6 +37,7 @@ export interface RepositoryState {
   answerDrafts: AnswerDraft[];
   prompts: PromptSetting[];
   providerSettings: ProviderSettings;
+  auditEvents: AuditEvent[];
 }
 
 export interface RetrievedDocumentChunk {
@@ -52,12 +57,28 @@ export interface DocumentIndexStatus {
   documents: Array<DocumentSummary & { searchable: boolean; chunkCount: number; embeddingCount: number }>;
 }
 
+interface InMemoryProfileState {
+  session: SessionSetup | null;
+  documents: DocumentSummary[];
+  documentChunks: RetrievedDocumentChunk[];
+  chunkEmbeddings: Map<string, number[]>;
+  transcriptEvents: TranscriptEvent[];
+  questionCards: QuestionCard[];
+  answerDrafts: AnswerDraft[];
+  archives: { summary: SessionArchiveSummary; state: RepositoryState }[];
+}
+
 export interface SqliteRepositoryOptions {
   dbPath: string;
   legacyStateFile?: string;
 }
 
 export interface InterviewCopilotRepository {
+  listProfiles(): LocalProfile[];
+  getActiveProfile(): LocalProfile;
+  createProfile(input: { id?: string; name: string; now?: number }): LocalProfile;
+  selectProfile(id: string): LocalProfile | undefined;
+  listAuditEvents(limit?: number): AuditEvent[];
   getSession(): SessionSetup | null;
   saveSession(session: SessionSetup): SessionSetup;
   listDocuments(): DocumentSummary[];
@@ -90,9 +111,22 @@ export interface InterviewCopilotRepository {
   snapshot(): RepositoryState;
 }
 
-const schemaVersion = 5;
+const defaultProfileId = "local-default";
+const defaultProfileName = "Default";
+
+function createDefaultProfile(now = Date.now()): LocalProfile {
+  return {
+    id: defaultProfileId,
+    name: defaultProfileName,
+    createdAt: now,
+    updatedAt: now,
+    lastActiveAt: now,
+  };
+}
 
 const emptyState: RepositoryState = {
+  activeProfile: createDefaultProfile(0),
+  profiles: [createDefaultProfile(0)],
   session: null,
   documents: [],
   transcriptEvents: [],
@@ -100,7 +134,21 @@ const emptyState: RepositoryState = {
   answerDrafts: [],
   prompts: [],
   providerSettings: defaultProviderSettings(),
+  auditEvents: [],
 };
+
+function emptyInMemoryProfileState(): InMemoryProfileState {
+  return {
+    session: null,
+    documents: [],
+    documentChunks: [],
+    chunkEmbeddings: new Map(),
+    transcriptEvents: [],
+    questionCards: [],
+    answerDrafts: [],
+    archives: [],
+  };
+}
 
 export function defaultPrompts(now = Date.now()): PromptSetting[] {
   return [
@@ -180,6 +228,8 @@ const legacyAnswerGeneratorPromptV2 = [
 export function createInMemoryRepository(
   initialState: Partial<RepositoryState> = emptyState,
 ): InterviewCopilotRepository {
+  let profiles = cloneProfiles(initialState.profiles);
+  let activeProfile = cloneProfile(initialState.activeProfile ?? profiles[0] ?? createDefaultProfile());
   let session = cloneSession(initialState.session ?? null);
   let documents = (initialState.documents ?? []).map(cloneDocument);
   let documentChunks: RetrievedDocumentChunk[] = [];
@@ -190,8 +240,81 @@ export function createInMemoryRepository(
   let prompts = clonePrompts(initialState.prompts);
   let providerSettings = cloneProviderSettings(initialState.providerSettings);
   let archives: { summary: SessionArchiveSummary; state: RepositoryState }[] = [];
+  let auditEvents = (initialState.auditEvents ?? []).map(cloneAuditEvent);
+  const profileStates = new Map<string, InMemoryProfileState>();
+
+  function currentProfileState(): InMemoryProfileState {
+    return {
+      session: cloneSession(session),
+      documents: documents.map(cloneDocument),
+      documentChunks: documentChunks.map(cloneRetrievedChunk),
+      chunkEmbeddings: new Map(chunkEmbeddings),
+      transcriptEvents: transcriptEvents.map(cloneTranscriptEvent),
+      questionCards: questionCards.map(cloneQuestion),
+      answerDrafts: answerDrafts.map(cloneAnswer),
+      archives: archives.map((archive) => ({
+        summary: { ...archive.summary },
+        state: normalizeState(archive.state),
+      })),
+    };
+  }
+
+  function saveActiveProfileState(): void {
+    profileStates.set(activeProfile.id, currentProfileState());
+  }
+
+  function loadProfileState(profileId: string): void {
+    const state = profileStates.get(profileId) ?? emptyInMemoryProfileState();
+    session = cloneSession(state.session);
+    documents = state.documents.map(cloneDocument);
+    documentChunks = state.documentChunks.map(cloneRetrievedChunk);
+    chunkEmbeddings = new Map(state.chunkEmbeddings);
+    transcriptEvents = state.transcriptEvents.map(cloneTranscriptEvent);
+    questionCards = state.questionCards.map(cloneQuestion);
+    answerDrafts = state.answerDrafts.map(cloneAnswer);
+    archives = state.archives.map((archive) => ({
+      summary: { ...archive.summary },
+      state: normalizeState(archive.state),
+    }));
+  }
+
+  saveActiveProfileState();
 
   return {
+    listProfiles() {
+      return profiles.map(cloneProfile);
+    },
+    getActiveProfile() {
+      return cloneProfile(activeProfile);
+    },
+    createProfile(input) {
+      const now = input.now ?? Date.now();
+      const profile = cloneProfile({
+        id: input.id || `profile-${now}-${Math.random().toString(16).slice(2, 8)}`,
+        name: input.name.trim() || "New profile",
+        createdAt: now,
+        updatedAt: now,
+        lastActiveAt: now,
+      });
+      profiles = upsertById(profiles, profile);
+      profileStates.set(profile.id, emptyInMemoryProfileState());
+      auditEvents = [makeAuditEvent("profile.created", "profile", profile.id, `Created local profile "${profile.name}".`, {}, profile.id, now), ...auditEvents];
+      return cloneProfile(profile);
+    },
+    selectProfile(id) {
+      const profile = profiles.find((candidate) => candidate.id === id);
+      if (!profile) return undefined;
+      const now = Date.now();
+      saveActiveProfileState();
+      activeProfile = { ...profile, lastActiveAt: now };
+      profiles = upsertById(profiles, activeProfile);
+      loadProfileState(activeProfile.id);
+      auditEvents = [makeAuditEvent("profile.selected", "profile", id, `Selected local profile "${activeProfile.name}".`, {}, id, now), ...auditEvents];
+      return cloneProfile(activeProfile);
+    },
+    listAuditEvents(limit = 50) {
+      return auditEvents.slice(0, limit).map(cloneAuditEvent);
+    },
     getSession() {
       return cloneSession(session);
     },
@@ -367,7 +490,18 @@ export function createInMemoryRepository(
       return loadProviderSettingsFromConfig();
     },
     archiveCurrentSession(id, archivedAt = Date.now()) {
-      const state = snapshotFromParts(session, documents, transcriptEvents, questionCards, answerDrafts, prompts);
+      const state = snapshotFromParts(
+        activeProfile,
+        profiles,
+        session,
+        documents,
+        transcriptEvents,
+        questionCards,
+        answerDrafts,
+        prompts,
+        providerSettings,
+        auditEvents,
+      );
       if (!state.session) return undefined;
       const summary = summarizeArchive(id, archivedAt, state);
       archives = [...archives.filter((archive) => archive.summary.id !== id), { summary, state }];
@@ -402,10 +536,18 @@ export function createInMemoryRepository(
       answerDrafts = (nextState.answerDrafts ?? []).map(cloneAnswer);
       prompts = clonePrompts(nextState.prompts);
       providerSettings = cloneProviderSettings(nextState.providerSettings);
+      profiles = cloneProfiles(nextState.profiles);
+      activeProfile = cloneProfile(nextState.activeProfile ?? profiles[0] ?? createDefaultProfile());
+      auditEvents = (nextState.auditEvents ?? []).map(cloneAuditEvent);
       archives = [];
+      profileStates.clear();
+      saveActiveProfileState();
     },
     snapshot() {
+      saveActiveProfileState();
       return snapshotFromParts(
+        activeProfile,
+        profiles,
         session,
         documents,
         transcriptEvents,
@@ -413,6 +555,7 @@ export function createInMemoryRepository(
         answerDrafts,
         prompts,
         providerSettings,
+        auditEvents,
       );
     },
   };
@@ -430,6 +573,8 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
   importLegacyJsonState(db, options.legacyStateFile);
 
   const replaceAll = db.transaction((state: RepositoryState) => {
+    db.prepare("DELETE FROM audit_events").run();
+    db.prepare("DELETE FROM session_archives").run();
     db.prepare("DELETE FROM answer_drafts").run();
     db.prepare("DELETE FROM question_cards").run();
     db.prepare("DELETE FROM transcript_events").run();
@@ -439,26 +584,78 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
     db.prepare("DELETE FROM document_contents").run();
     db.prepare("DELETE FROM documents").run();
     db.prepare("DELETE FROM prompts").run();
+    db.prepare("DELETE FROM active_profile").run();
+    db.prepare("DELETE FROM profiles").run();
 
-    for (const document of state.documents) insertDocument(db, document);
-    if (state.session) insertSession(db, state.session);
-    for (const event of state.transcriptEvents) insertTranscriptEvent(db, event);
-    for (const question of state.questionCards) insertQuestion(db, question);
-    for (const answer of state.answerDrafts) insertAnswerDraft(db, answer);
+    for (const profile of state.profiles) insertProfile(db, profile);
+    selectProfile(db, state.activeProfile);
+    const profileId = state.activeProfile.id;
+    for (const document of state.documents) insertDocument(db, document, profileId);
+    if (state.session) insertSession(db, state.session, profileId);
+    for (const event of state.transcriptEvents) insertTranscriptEvent(db, event, profileId);
+    for (const question of state.questionCards) insertQuestion(db, question, profileId);
+    for (const answer of state.answerDrafts) insertAnswerDraft(db, answer, profileId);
     for (const prompt of clonePrompts(state.prompts)) insertPrompt(db, prompt);
-    setProviderSettings(db, state.providerSettings);
+    for (const event of state.auditEvents) insertAuditEvent(db, event);
   });
 
   return {
+    listProfiles() {
+      return readProfiles(db);
+    },
+    getActiveProfile() {
+      return readActiveProfile(db);
+    },
+    createProfile(input) {
+      const now = input.now ?? Date.now();
+      const profile = cloneProfile({
+        id: input.id || `profile-${now}-${Math.random().toString(16).slice(2, 8)}`,
+        name: input.name.trim() || "New profile",
+        createdAt: now,
+        updatedAt: now,
+        lastActiveAt: now,
+      });
+      db.transaction(() => {
+        insertProfile(db, profile);
+        insertAuditEvent(db, makeAuditEvent(
+          "profile.created",
+          "profile",
+          profile.id,
+          `Created local profile "${profile.name}".`,
+          {},
+          profile.id,
+          now,
+        ));
+      })();
+      return cloneProfile(profile);
+    },
+    selectProfile(id) {
+      const profile = readProfileById(db, id);
+      if (!profile) return undefined;
+      const selected = selectProfile(db, profile);
+      insertAuditEvent(db, makeAuditEvent(
+        "profile.selected",
+        "profile",
+        selected.id,
+        `Selected local profile "${selected.name}".`,
+        {},
+        selected.id,
+      ));
+      return cloneProfile(selected);
+    },
+    listAuditEvents(limit = 50) {
+      return readAuditEvents(db, limit);
+    },
     getSession() {
       return readSession(db);
     },
     saveSession(session) {
       const nextSession = cloneSession(session) as SessionSetup;
+      const profileId = readActiveProfileId(db);
       db.transaction(() => {
-        db.prepare("DELETE FROM sessions").run();
-        insertSession(db, nextSession);
-        replaceDocuments(db, nextSession.documents);
+        db.prepare("DELETE FROM sessions WHERE profile_id = ?").run(profileId);
+        insertSession(db, nextSession, profileId);
+        replaceDocuments(db, nextSession.documents, profileId);
       })();
       return readSession(db) as SessionSetup;
     },
@@ -466,7 +663,8 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
       return readDocuments(db);
     },
     saveDocument(document, extractedText) {
-      const settings = readProviderSettings(db);
+      const profileId = readActiveProfileId(db);
+      const settings = loadProviderSettingsFromConfig();
       const usesExternalEmbeddings = Boolean(createEmbeddingClient(settings));
       const nextDocument = cloneDocument({
         ...document,
@@ -475,10 +673,10 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
           : document.status,
       });
       db.transaction(() => {
-        insertDocument(db, nextDocument);
+        insertDocument(db, nextDocument, profileId);
         if (typeof extractedText === "string") {
-          replaceDocumentText(db, nextDocument, extractedText);
-          deleteDocumentEmbeddings(db, nextDocument.id);
+          replaceDocumentText(db, nextDocument, extractedText, profileId);
+          deleteDocumentEmbeddings(db, nextDocument.id, profileId);
         }
       })();
       return cloneDocument(nextDocument);
@@ -487,40 +685,42 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
       return indexDocumentEmbeddingsInDb(db, documentId);
     },
     deleteDocument(id) {
+      const profileId = readActiveProfileId(db);
       const existing = readDocumentById(db, id);
       if (!existing) return undefined;
 
       db.transaction(() => {
-        deleteDocumentEmbeddings(db, id);
-        db.prepare("DELETE FROM document_chunks WHERE document_id = ?").run(id);
-        db.prepare("DELETE FROM document_contents WHERE document_id = ?").run(id);
-        db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+        deleteDocumentEmbeddings(db, id, profileId);
+        db.prepare("DELETE FROM document_chunks WHERE document_id = ? AND profile_id = ?").run(id, profileId);
+        db.prepare("DELETE FROM document_contents WHERE document_id = ? AND profile_id = ?").run(id, profileId);
+        db.prepare("DELETE FROM documents WHERE id = ? AND profile_id = ?").run(id, profileId);
       })();
 
-      const session = readSession(db);
+      const session = readSession(db, profileId);
       if (session?.documents.some((document) => document.id === id)) {
         const nextSession = {
           ...session,
           documents: session.documents.filter((document) => document.id !== id),
         };
         db.transaction(() => {
-          db.prepare("DELETE FROM sessions").run();
-          insertSession(db, nextSession);
-          replaceDocuments(db, nextSession.documents);
+          db.prepare("DELETE FROM sessions WHERE profile_id = ?").run(profileId);
+          insertSession(db, nextSession, profileId);
+          replaceDocuments(db, nextSession.documents, profileId);
         })();
       }
 
       return cloneDocument(existing);
     },
     async searchDocumentChunks(query, limit = 4) {
-      ensureDocumentChunks(db);
-      const chunks = readDocumentChunks(db);
-      const embeddings = readChunkEmbeddings(db);
+      const profileId = readActiveProfileId(db);
+      ensureDocumentChunks(db, profileId);
+      const chunks = readDocumentChunks(db, profileId);
+      const embeddings = readChunkEmbeddings(db, profileId);
       return searchDocumentChunksWithEmbeddings(
         query,
         chunks,
         embeddings,
-        readProviderSettings(db),
+        loadProviderSettingsFromConfig(),
         limit,
       ).then((results) => results.map(cloneRetrievedChunk));
     },
@@ -547,7 +747,7 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
       return cloneQuestion(nextQuestion);
     },
     updateQuestionStatus(id, status) {
-      db.prepare("UPDATE question_cards SET status = ? WHERE id = ?").run(status, id);
+      db.prepare("UPDATE question_cards SET status = ? WHERE id = ? AND profile_id = ?").run(status, id, readActiveProfileId(db));
       return readQuestionById(db, id);
     },
     listAnswerDrafts() {
@@ -558,9 +758,10 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
     },
     saveAnswerDraft(answer) {
       const nextAnswer = cloneAnswer(answer);
-      db.prepare("DELETE FROM answer_drafts WHERE question_id = ? AND id <> ?").run(
+      db.prepare("DELETE FROM answer_drafts WHERE question_id = ? AND id <> ? AND profile_id = ?").run(
         nextAnswer.questionId,
         nextAnswer.id,
+        readActiveProfileId(db),
       );
       insertAnswerDraft(db, nextAnswer);
       return cloneAnswer(nextAnswer);
@@ -568,10 +769,11 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
     updateAnswerDraftMetadata(id, metadata) {
       const existing = readAnswerDraftById(db, id);
       if (!existing) return undefined;
-      db.prepare("UPDATE answer_drafts SET pinned = ?, copied_at = ? WHERE id = ?").run(
+      db.prepare("UPDATE answer_drafts SET pinned = ?, copied_at = ? WHERE id = ? AND profile_id = ?").run(
         (metadata.pinned ?? existing.pinned) ? 1 : 0,
         metadata.copiedAt ?? existing.copiedAt ?? null,
         id,
+        readActiveProfileId(db),
       );
       return readAnswerDraftById(db, id);
     },
@@ -597,7 +799,7 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
       const state = this.snapshot();
       if (!state.session) return undefined;
       const summary = summarizeArchive(id, archivedAt, state);
-      insertSessionArchive(db, summary, state);
+      insertSessionArchive(db, summary, state, state.activeProfile.id);
       return { ...summary };
     },
     listSessionArchives() {
@@ -608,9 +810,10 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
     },
     clearLiveSessionData() {
       db.transaction(() => {
-        db.prepare("DELETE FROM answer_drafts").run();
-        db.prepare("DELETE FROM question_cards").run();
-        db.prepare("DELETE FROM transcript_events").run();
+        const profileId = readActiveProfileId(db);
+        db.prepare("DELETE FROM answer_drafts WHERE profile_id = ?").run(profileId);
+        db.prepare("DELETE FROM question_cards WHERE profile_id = ?").run(profileId);
+        db.prepare("DELETE FROM transcript_events WHERE profile_id = ?").run(profileId);
       })();
     },
     getDocumentIndexStatus() {
@@ -621,13 +824,16 @@ export function createSqliteRepository(options: SqliteRepositoryOptions): Interv
     },
     snapshot() {
       return snapshotFromParts(
+        readActiveProfile(db),
+        readProfiles(db),
         readSession(db),
         readDocuments(db),
         readTranscriptEvents(db),
         readQuestions(db),
         readAnswerDrafts(db),
         readPrompts(db),
-        readProviderSettings(db),
+        loadProviderSettingsFromConfig(),
+        readAuditEvents(db),
       );
     },
   };
@@ -906,6 +1112,210 @@ function migrate(db: Database.Database): void {
       db.prepare("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(9, Date.now());
     })();
   }
+
+  if (currentVersion < 10) {
+    db.transaction(() => {
+      const now = Date.now();
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS profiles (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          last_active_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS active_profile (
+          singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+          profile_id TEXT NOT NULL,
+          FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE RESTRICT
+        );
+      `);
+
+      db.prepare(`
+        INSERT INTO profiles (id, name, created_at, updated_at, last_active_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+      `).run(defaultProfileId, defaultProfileName, now, now, now);
+      db.prepare(`
+        INSERT INTO active_profile (singleton_id, profile_id)
+        VALUES (1, ?)
+        ON CONFLICT(singleton_id) DO UPDATE SET profile_id = excluded.profile_id
+      `).run(defaultProfileId);
+
+      rebuildSessionsForProfiles(db);
+      addProfileColumn(db, "documents");
+      addProfileColumn(db, "document_contents");
+      addProfileColumn(db, "document_chunks");
+      addProfileColumn(db, "document_embeddings");
+      addProfileColumn(db, "transcript_events");
+      rebuildQuestionsForProfiles(db);
+      rebuildAnswersForProfiles(db);
+      addProfileColumn(db, "session_archives");
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS audit_events (
+          id TEXT PRIMARY KEY,
+          profile_id TEXT,
+          event_type TEXT NOT NULL,
+          entity_type TEXT NOT NULL,
+          entity_id TEXT,
+          message TEXT NOT NULL,
+          metadata_json TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_documents_profile_id ON documents(profile_id, id);
+        CREATE INDEX IF NOT EXISTS idx_document_chunks_profile_id ON document_chunks(profile_id, document_id, id);
+        CREATE INDEX IF NOT EXISTS idx_document_embeddings_profile_id ON document_embeddings(profile_id, document_id);
+        CREATE INDEX IF NOT EXISTS idx_transcript_events_profile_id ON transcript_events(profile_id, timestamp, id);
+        CREATE INDEX IF NOT EXISTS idx_question_cards_profile_id ON question_cards(profile_id, created_at, id);
+        CREATE INDEX IF NOT EXISTS idx_answer_drafts_profile_id ON answer_drafts(profile_id, id);
+        CREATE INDEX IF NOT EXISTS idx_session_archives_profile_id ON session_archives(profile_id, archived_at DESC, id);
+        CREATE INDEX IF NOT EXISTS idx_audit_events_profile_id ON audit_events(profile_id, created_at DESC, id);
+      `);
+
+      db.prepare(`
+        INSERT INTO audit_events (id, profile_id, event_type, entity_type, entity_id, message, metadata_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO NOTHING
+      `).run(
+        `audit-${now}-migration-profile-scope`,
+        defaultProfileId,
+        "profile.migrated",
+        "profile",
+        defaultProfileId,
+        "Migrated existing local data into the default profile.",
+        "{}",
+        now,
+      );
+
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(10, now);
+    })();
+  }
+}
+
+function addProfileColumn(db: Database.Database, tableName: string): void {
+  const columns = new Set(
+    (db.prepare(`PRAGMA table_info(${tableName})`).all() as { name: string }[]).map((column) => column.name),
+  );
+  if (!columns.has("profile_id")) {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN profile_id TEXT NOT NULL DEFAULT '${defaultProfileId}';`);
+  }
+}
+
+function rebuildSessionsForProfiles(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]).map((column) => column.name),
+  );
+  if (columns.has("profile_id")) return;
+
+  db.exec(`
+    CREATE TABLE sessions_profiled (
+      profile_id TEXT PRIMARY KEY,
+      id TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      title TEXT NOT NULL,
+      role TEXT NOT NULL,
+      company TEXT NOT NULL,
+      round TEXT NOT NULL,
+      seniority TEXT NOT NULL,
+      meeting_topic TEXT NOT NULL DEFAULT '',
+      meeting_audience TEXT NOT NULL DEFAULT '',
+      meeting_goal TEXT NOT NULL DEFAULT '',
+      meeting_notes TEXT NOT NULL DEFAULT '',
+      response_style TEXT NOT NULL,
+      language TEXT NOT NULL,
+      voice_profile TEXT NOT NULL DEFAULT 'staff-engineer',
+      custom_voice TEXT NOT NULL DEFAULT '',
+      answer_format TEXT NOT NULL DEFAULT 'technical',
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    INSERT INTO sessions_profiled (
+      profile_id, id, mode, title, role, company, round, seniority,
+      meeting_topic, meeting_audience, meeting_goal, meeting_notes, response_style, language,
+      voice_profile, custom_voice, answer_format
+    )
+    SELECT
+      '${defaultProfileId}', id, mode, title, role, company, round, seniority,
+      COALESCE(meeting_topic, ''), COALESCE(meeting_audience, ''), COALESCE(meeting_goal, ''),
+      COALESCE(meeting_notes, ''), response_style, language,
+      COALESCE(voice_profile, 'staff-engineer'), COALESCE(custom_voice, ''), COALESCE(answer_format, 'technical')
+    FROM sessions;
+  `);
+  db.exec("DROP TABLE sessions;");
+  db.exec("ALTER TABLE sessions_profiled RENAME TO sessions;");
+}
+
+function rebuildQuestionsForProfiles(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(question_cards)").all() as { name: string }[]).map((column) => column.name),
+  );
+  if (columns.has("profile_id")) return;
+
+  db.exec(`
+    CREATE TABLE question_cards_profiled (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL DEFAULT '${defaultProfileId}',
+      raw_text TEXT NOT NULL,
+      framed_question TEXT NOT NULL,
+      type TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      evaluation_intent TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      UNIQUE(profile_id, raw_text),
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    INSERT INTO question_cards_profiled (
+      id, profile_id, raw_text, framed_question, type, confidence, evaluation_intent, created_at, status
+    )
+    SELECT id, '${defaultProfileId}', raw_text, framed_question, type, confidence, evaluation_intent, created_at, status
+    FROM question_cards;
+  `);
+  db.exec("DROP TABLE question_cards;");
+  db.exec("ALTER TABLE question_cards_profiled RENAME TO question_cards;");
+}
+
+function rebuildAnswersForProfiles(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(answer_drafts)").all() as { name: string }[]).map((column) => column.name),
+  );
+  if (columns.has("profile_id")) return;
+
+  db.exec(`
+    CREATE TABLE answer_drafts_profiled (
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL DEFAULT '${defaultProfileId}',
+      question_id TEXT NOT NULL,
+      format TEXT NOT NULL,
+      bullets_json TEXT NOT NULL,
+      structured TEXT NOT NULL,
+      sources_json TEXT NOT NULL,
+      risk TEXT NOT NULL,
+      pinned INTEGER NOT NULL DEFAULT 0,
+      copied_at INTEGER,
+      UNIQUE(profile_id, question_id),
+      FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE,
+      FOREIGN KEY (question_id) REFERENCES question_cards(id) ON DELETE CASCADE
+    );
+  `);
+  db.exec(`
+    INSERT INTO answer_drafts_profiled (
+      id, profile_id, question_id, format, bullets_json, structured, sources_json, risk, pinned, copied_at
+    )
+    SELECT
+      id, '${defaultProfileId}', question_id, format, bullets_json, structured, sources_json, risk,
+      COALESCE(pinned, 0), copied_at
+    FROM answer_drafts;
+  `);
+  db.exec("DROP TABLE answer_drafts;");
+  db.exec("ALTER TABLE answer_drafts_profiled RENAME TO answer_drafts;");
 }
 
 function ensureDefaultPrompts(db: Database.Database): void {
@@ -938,6 +1348,8 @@ function importLegacyJsonState(db: Database.Database, legacyStateFile?: string):
 
 function createSqliteStateImporter(db: Database.Database): (state: RepositoryState) => void {
   return db.transaction((state: RepositoryState) => {
+    const activeProfile = readActiveProfile(db);
+    const profileId = activeProfile.id;
     db.prepare("DELETE FROM answer_drafts").run();
     db.prepare("DELETE FROM question_cards").run();
     db.prepare("DELETE FROM transcript_events").run();
@@ -948,13 +1360,20 @@ function createSqliteStateImporter(db: Database.Database): (state: RepositorySta
     db.prepare("DELETE FROM documents").run();
     db.prepare("DELETE FROM prompts").run();
 
-    for (const document of state.documents) insertDocument(db, document);
-    if (state.session) insertSession(db, state.session);
-    for (const event of state.transcriptEvents) insertTranscriptEvent(db, event);
-    for (const question of state.questionCards) insertQuestion(db, question);
-    for (const answer of state.answerDrafts) insertAnswerDraft(db, answer);
+    for (const document of state.documents) insertDocument(db, document, profileId);
+    if (state.session) insertSession(db, state.session, profileId);
+    for (const event of state.transcriptEvents) insertTranscriptEvent(db, event, profileId);
+    for (const question of state.questionCards) insertQuestion(db, question, profileId);
+    for (const answer of state.answerDrafts) insertAnswerDraft(db, answer, profileId);
     for (const prompt of state.prompts) insertPrompt(db, prompt);
-    setProviderSettings(db, state.providerSettings);
+    insertAuditEvent(db, makeAuditEvent(
+      "profile.migrated",
+      "profile",
+      profileId,
+      "Imported legacy JSON state into the active local profile.",
+      {},
+      profileId,
+    ));
   });
 }
 
@@ -971,6 +1390,86 @@ function setMeta(db: Database.Database, key: string, value: string): void {
   `).run(key, value);
 }
 
+function readProfiles(db: Database.Database): LocalProfile[] {
+  return (db.prepare(`
+    SELECT id, name, created_at, updated_at, last_active_at
+    FROM profiles
+    ORDER BY last_active_at DESC, updated_at DESC, rowid DESC
+  `).all() as ProfileRow[]).map(profileFromRow);
+}
+
+function readProfileById(db: Database.Database, id: string): LocalProfile | undefined {
+  const row = db.prepare(`
+    SELECT id, name, created_at, updated_at, last_active_at
+    FROM profiles
+    WHERE id = ?
+  `).get(id) as ProfileRow | undefined;
+  return row ? profileFromRow(row) : undefined;
+}
+
+function readActiveProfileId(db: Database.Database): string {
+  const active = db.prepare("SELECT profile_id FROM active_profile WHERE singleton_id = 1").get() as
+    | { profile_id: string }
+    | undefined;
+  return active?.profile_id || defaultProfileId;
+}
+
+function readActiveProfile(db: Database.Database): LocalProfile {
+  const profile = readProfileById(db, readActiveProfileId(db));
+  if (profile) return profile;
+  const fallback = createDefaultProfile();
+  insertProfile(db, fallback);
+  db.prepare(`
+    INSERT INTO active_profile (singleton_id, profile_id)
+    VALUES (1, ?)
+    ON CONFLICT(singleton_id) DO UPDATE SET profile_id = excluded.profile_id
+  `).run(fallback.id);
+  return fallback;
+}
+
+function insertProfile(db: Database.Database, profile: LocalProfile): void {
+  db.prepare(`
+    INSERT INTO profiles (id, name, created_at, updated_at, last_active_at)
+    VALUES (@id, @name, @createdAt, @updatedAt, @lastActiveAt)
+    ON CONFLICT(id) DO UPDATE SET
+      name = excluded.name,
+      updated_at = excluded.updated_at,
+      last_active_at = excluded.last_active_at
+  `).run(profile);
+}
+
+function selectProfile(db: Database.Database, profile: LocalProfile): LocalProfile {
+  const selected = cloneProfile({ ...profile, lastActiveAt: Date.now() });
+  db.transaction(() => {
+    insertProfile(db, selected);
+    db.prepare(`
+      INSERT INTO active_profile (singleton_id, profile_id)
+      VALUES (1, ?)
+      ON CONFLICT(singleton_id) DO UPDATE SET profile_id = excluded.profile_id
+    `).run(selected.id);
+  })();
+  return selected;
+}
+
+function insertAuditEvent(db: Database.Database, event: AuditEvent): void {
+  db.prepare(`
+    INSERT INTO audit_events (id, profile_id, event_type, entity_type, entity_id, message, metadata_json, created_at)
+    VALUES (@id, @profileId, @eventType, @entityType, @entityId, @message, @metadataJson, @createdAt)
+  `).run({
+    ...event,
+    metadataJson: JSON.stringify(event.metadata),
+  });
+}
+
+function readAuditEvents(db: Database.Database, limit = 50): AuditEvent[] {
+  return (db.prepare(`
+    SELECT id, profile_id, event_type, entity_type, entity_id, message, metadata_json, created_at
+    FROM audit_events
+    ORDER BY created_at DESC, rowid DESC
+    LIMIT ?
+  `).all(limit) as AuditEventRow[]).map(auditEventFromRow);
+}
+
 function readProviderSettings(db: Database.Database): ProviderSettings {
   return normalizeProviderSettings(parseJson(getMeta(db, "provider_settings") || "", {}));
 }
@@ -979,20 +1478,20 @@ function setProviderSettings(db: Database.Database, settings: ProviderSettings):
   setMeta(db, "provider_settings", JSON.stringify(cloneProviderSettings(settings)));
 }
 
-function insertSession(db: Database.Database, session: SessionSetup): void {
+function insertSession(db: Database.Database, session: SessionSetup, profileId = readActiveProfileId(db)): void {
   const normalized = normalizeSessionSetup(session);
   db.prepare(`
     INSERT INTO sessions (
-      singleton_id, id, mode, title, role, company, round, seniority,
+      profile_id, id, mode, title, role, company, round, seniority,
       meeting_topic, meeting_audience, meeting_goal, meeting_notes, response_style, language,
       voice_profile, custom_voice, answer_format
     )
     VALUES (
-      1, @id, @mode, @title, @role, @company, @round, @seniority,
+      @profileId, @id, @mode, @title, @role, @company, @round, @seniority,
       @meetingTopic, @meetingAudience, @meetingGoal, @meetingNotes, @responseStyle, @language,
       @voiceProfile, @customVoice, @answerFormat
     )
-    ON CONFLICT(singleton_id) DO UPDATE SET
+    ON CONFLICT(profile_id) DO UPDATE SET
       id = excluded.id,
       mode = excluded.mode,
       title = excluded.title,
@@ -1009,37 +1508,45 @@ function insertSession(db: Database.Database, session: SessionSetup): void {
       voice_profile = excluded.voice_profile,
       custom_voice = excluded.custom_voice,
       answer_format = excluded.answer_format
-  `).run(normalized);
+  `).run({ ...normalized, profileId });
 }
 
-function insertDocument(db: Database.Database, document: DocumentSummary): void {
+function insertDocument(db: Database.Database, document: DocumentSummary, profileId = readActiveProfileId(db)): void {
   db.prepare(`
-    INSERT INTO documents (id, name, category, word_count, status)
-    VALUES (@id, @name, @category, @wordCount, @status)
+    INSERT INTO documents (id, profile_id, name, category, word_count, status)
+    VALUES (@id, @profileId, @name, @category, @wordCount, @status)
     ON CONFLICT(id) DO UPDATE SET
+      profile_id = excluded.profile_id,
       name = excluded.name,
       category = excluded.category,
       word_count = excluded.word_count,
       status = excluded.status
-  `).run(document);
+  `).run({ ...document, profileId });
 }
 
-function replaceDocumentText(db: Database.Database, document: DocumentSummary, text: string): void {
+function replaceDocumentText(
+  db: Database.Database,
+  document: DocumentSummary,
+  text: string,
+  profileId = readActiveProfileId(db),
+): void {
   db.prepare(`
-    INSERT INTO document_contents (document_id, text, updated_at)
-    VALUES (?, ?, ?)
+    INSERT INTO document_contents (document_id, profile_id, text, updated_at)
+    VALUES (?, ?, ?, ?)
     ON CONFLICT(document_id) DO UPDATE SET
+      profile_id = excluded.profile_id,
       text = excluded.text,
       updated_at = excluded.updated_at
-  `).run(document.id, text, Date.now());
+  `).run(document.id, profileId, text, Date.now());
 
-  db.prepare("DELETE FROM document_chunks WHERE document_id = ?").run(document.id);
+  db.prepare("DELETE FROM document_chunks WHERE document_id = ? AND profile_id = ?").run(document.id, profileId);
   for (const chunk of chunkDocument(document, text)) {
     db.prepare(`
-      INSERT INTO document_chunks (id, document_id, chunk_index, text)
-      VALUES (@id, @documentId, @chunkIndex, @text)
+      INSERT INTO document_chunks (id, profile_id, document_id, chunk_index, text)
+      VALUES (@id, @profileId, @documentId, @chunkIndex, @text)
     `).run({
       id: chunk.id,
+      profileId,
       documentId: chunk.documentId,
       chunkIndex: Number(chunk.id.split(":").at(-1) || 0),
       text: chunk.text,
@@ -1047,20 +1554,20 @@ function replaceDocumentText(db: Database.Database, document: DocumentSummary, t
   }
 }
 
-function replaceDocuments(db: Database.Database, documents: DocumentSummary[]): void {
+function replaceDocuments(db: Database.Database, documents: DocumentSummary[], profileId = readActiveProfileId(db)): void {
   const nextIds = new Set(documents.map((document) => document.id));
-  const existing = db.prepare("SELECT id FROM documents").all() as { id: string }[];
+  const existing = db.prepare("SELECT id FROM documents WHERE profile_id = ?").all(profileId) as { id: string }[];
 
   for (const { id } of existing) {
     if (nextIds.has(id)) continue;
-    deleteDocumentEmbeddings(db, id);
-    db.prepare("DELETE FROM document_chunks WHERE document_id = ?").run(id);
-    db.prepare("DELETE FROM document_contents WHERE document_id = ?").run(id);
-    db.prepare("DELETE FROM documents WHERE id = ?").run(id);
+    deleteDocumentEmbeddings(db, id, profileId);
+    db.prepare("DELETE FROM document_chunks WHERE document_id = ? AND profile_id = ?").run(id, profileId);
+    db.prepare("DELETE FROM document_contents WHERE document_id = ? AND profile_id = ?").run(id, profileId);
+    db.prepare("DELETE FROM documents WHERE id = ? AND profile_id = ?").run(id, profileId);
   }
 
   for (const document of documents) {
-    insertDocument(db, document);
+    insertDocument(db, document, profileId);
   }
 }
 
@@ -1069,43 +1576,51 @@ function documentStatusForText(text: string, usesExternalEmbeddings: boolean): D
   return usesExternalEmbeddings ? "processing" : "indexed";
 }
 
-function readDocumentById(db: Database.Database, id: string): DocumentSummary | undefined {
-  return readDocuments(db).find((document) => document.id === id);
+function readDocumentById(db: Database.Database, id: string, profileId = readActiveProfileId(db)): DocumentSummary | undefined {
+  return readDocuments(db, profileId).find((document) => document.id === id);
 }
 
-function updateDocumentStatus(db: Database.Database, id: string, status: DocumentSummary["status"]): DocumentSummary | undefined {
-  db.prepare("UPDATE documents SET status = ? WHERE id = ?").run(status, id);
-  return readDocumentById(db, id);
+function updateDocumentStatus(
+  db: Database.Database,
+  id: string,
+  status: DocumentSummary["status"],
+  profileId = readActiveProfileId(db),
+): DocumentSummary | undefined {
+  db.prepare("UPDATE documents SET status = ? WHERE id = ? AND profile_id = ?").run(status, id, profileId);
+  return readDocumentById(db, id, profileId);
 }
 
-function deleteDocumentEmbeddings(db: Database.Database, documentId: string): void {
-  db.prepare("DELETE FROM document_embeddings WHERE document_id = ?").run(documentId);
+function deleteDocumentEmbeddings(db: Database.Database, documentId: string, profileId = readActiveProfileId(db)): void {
+  db.prepare("DELETE FROM document_embeddings WHERE document_id = ? AND profile_id = ?").run(documentId, profileId);
 }
 
 function replaceChunkEmbeddings(
   db: Database.Database,
   documentId: string,
   embeddings: Map<string, number[]>,
+  profileId = readActiveProfileId(db),
 ): void {
-  deleteDocumentEmbeddings(db, documentId);
+  deleteDocumentEmbeddings(db, documentId, profileId);
   const insert = db.prepare(`
-    INSERT INTO document_embeddings (chunk_id, document_id, embedding_json)
-    VALUES (@chunkId, @documentId, @embeddingJson)
+    INSERT INTO document_embeddings (chunk_id, profile_id, document_id, embedding_json)
+    VALUES (@chunkId, @profileId, @documentId, @embeddingJson)
   `);
   for (const [chunkId, vector] of embeddings.entries()) {
     insert.run({
       chunkId,
+      profileId,
       documentId,
       embeddingJson: JSON.stringify(vector),
     });
   }
 }
 
-function readChunkEmbeddings(db: Database.Database): Map<string, number[]> {
+function readChunkEmbeddings(db: Database.Database, profileId = readActiveProfileId(db)): Map<string, number[]> {
   const rows = db.prepare(`
     SELECT chunk_id, embedding_json
     FROM document_embeddings
-  `).all() as Array<{ chunk_id: string; embedding_json: string }>;
+    WHERE profile_id = ?
+  `).all(profileId) as Array<{ chunk_id: string; embedding_json: string }>;
 
   const embeddings = new Map<string, number[]>();
   for (const row of rows) {
@@ -1118,33 +1633,34 @@ function readChunkEmbeddings(db: Database.Database): Map<string, number[]> {
 async function indexDocumentEmbeddingsInDb(
   db: Database.Database,
   documentId: string,
+  profileId = readActiveProfileId(db),
 ): Promise<DocumentSummary | undefined> {
-  const document = readDocumentById(db, documentId);
+  const document = readDocumentById(db, documentId, profileId);
   if (!document) return undefined;
 
-  ensureDocumentChunks(db);
-  const chunks = readDocumentChunks(db).filter((chunk) => chunk.documentId === documentId);
+  ensureDocumentChunks(db, profileId);
+  const chunks = readDocumentChunks(db, profileId).filter((chunk) => chunk.documentId === documentId);
   if (!chunks.length) {
-    return updateDocumentStatus(db, documentId, "failed");
+    return updateDocumentStatus(db, documentId, "failed", profileId);
   }
 
-  const settings = readProviderSettings(db);
+  const settings = loadProviderSettingsFromConfig();
   const client = createEmbeddingClient(settings);
   if (!client) {
-    return updateDocumentStatus(db, documentId, "indexed");
+    return updateDocumentStatus(db, documentId, "indexed", profileId);
   }
 
   try {
     const embeddings = await indexChunkEmbeddings(client, chunks);
-    replaceChunkEmbeddings(db, documentId, embeddings);
-    return updateDocumentStatus(db, documentId, "indexed");
+    replaceChunkEmbeddings(db, documentId, embeddings, profileId);
+    return updateDocumentStatus(db, documentId, "indexed", profileId);
   } catch (error) {
     console.warn("Document embedding indexing failed.", error);
-    return updateDocumentStatus(db, documentId, "failed");
+    return updateDocumentStatus(db, documentId, "failed", profileId);
   }
 }
 
-function ensureDocumentChunks(db: Database.Database): void {
+function ensureDocumentChunks(db: Database.Database, profileId = readActiveProfileId(db)): void {
   const rows = db.prepare(`
     SELECT
       documents.id,
@@ -1154,10 +1670,15 @@ function ensureDocumentChunks(db: Database.Database): void {
       documents.status,
       document_contents.text
     FROM documents
-    INNER JOIN document_contents ON document_contents.document_id = documents.id
-    LEFT JOIN document_chunks ON document_chunks.document_id = documents.id
+    INNER JOIN document_contents
+      ON document_contents.document_id = documents.id
+      AND document_contents.profile_id = documents.profile_id
+    LEFT JOIN document_chunks
+      ON document_chunks.document_id = documents.id
+      AND document_chunks.profile_id = documents.profile_id
     WHERE document_chunks.id IS NULL
-  `).all() as Array<{
+      AND documents.profile_id = ?
+  `).all(profileId) as Array<{
     id: string;
     name: string;
     category: string;
@@ -1173,29 +1694,31 @@ function ensureDocumentChunks(db: Database.Database): void {
       category: row.category as DocumentSummary["category"],
       wordCount: row.word_count,
       status: row.status as DocumentSummary["status"],
-    }, row.text);
+    }, row.text, profileId);
   }
 }
 
-function insertTranscriptEvent(db: Database.Database, event: TranscriptEvent): void {
+function insertTranscriptEvent(db: Database.Database, event: TranscriptEvent, profileId = readActiveProfileId(db)): void {
   db.prepare(`
-    INSERT INTO transcript_events (id, source, text, is_final, timestamp)
-    VALUES (@id, @source, @text, @isFinal, @timestamp)
+    INSERT INTO transcript_events (id, profile_id, source, text, is_final, timestamp)
+    VALUES (@id, @profileId, @source, @text, @isFinal, @timestamp)
     ON CONFLICT(id) DO UPDATE SET
+      profile_id = excluded.profile_id,
       source = excluded.source,
       text = excluded.text,
       is_final = excluded.is_final,
       timestamp = excluded.timestamp
-  `).run({ ...event, isFinal: event.isFinal ? 1 : 0 });
+  `).run({ ...event, profileId, isFinal: event.isFinal ? 1 : 0 });
 }
 
-function insertQuestion(db: Database.Database, question: QuestionCard): void {
+function insertQuestion(db: Database.Database, question: QuestionCard, profileId = readActiveProfileId(db)): void {
   db.prepare(`
     INSERT INTO question_cards (
-      id, raw_text, framed_question, type, confidence, evaluation_intent, created_at, status
+      id, profile_id, raw_text, framed_question, type, confidence, evaluation_intent, created_at, status
     )
-    VALUES (@id, @rawText, @framedQuestion, @type, @confidence, @evaluationIntent, @createdAt, @status)
+    VALUES (@id, @profileId, @rawText, @framedQuestion, @type, @confidence, @evaluationIntent, @createdAt, @status)
     ON CONFLICT(id) DO UPDATE SET
+      profile_id = excluded.profile_id,
       raw_text = excluded.raw_text,
       framed_question = excluded.framed_question,
       type = excluded.type,
@@ -1203,16 +1726,17 @@ function insertQuestion(db: Database.Database, question: QuestionCard): void {
       evaluation_intent = excluded.evaluation_intent,
       created_at = excluded.created_at,
       status = excluded.status
-  `).run(question);
+  `).run({ ...question, profileId });
 }
 
-function insertAnswerDraft(db: Database.Database, answer: AnswerDraft): void {
+function insertAnswerDraft(db: Database.Database, answer: AnswerDraft, profileId = readActiveProfileId(db)): void {
   db.prepare(`
     INSERT INTO answer_drafts (
-      id, question_id, format, bullets_json, structured, sources_json, risk, pinned, copied_at
+      id, profile_id, question_id, format, bullets_json, structured, sources_json, risk, pinned, copied_at
     )
-    VALUES (@id, @questionId, @format, @bulletsJson, @structured, @sourcesJson, @risk, @pinned, @copiedAt)
+    VALUES (@id, @profileId, @questionId, @format, @bulletsJson, @structured, @sourcesJson, @risk, @pinned, @copiedAt)
     ON CONFLICT(id) DO UPDATE SET
+      profile_id = excluded.profile_id,
       question_id = excluded.question_id,
       format = excluded.format,
       bullets_json = excluded.bullets_json,
@@ -1223,6 +1747,7 @@ function insertAnswerDraft(db: Database.Database, answer: AnswerDraft): void {
       copied_at = excluded.copied_at
   `).run({
     id: answer.id,
+    profileId,
     questionId: answer.questionId,
     format: answer.format,
     bulletsJson: JSON.stringify(answer.stages.bullets),
@@ -1250,16 +1775,18 @@ function insertSessionArchive(
   db: Database.Database,
   summary: SessionArchiveSummary,
   state: RepositoryState,
+  profileId = readActiveProfileId(db),
 ): void {
   db.prepare(`
     INSERT INTO session_archives (
-      id, title, mode, role, company, round, archived_at, question_count, answer_count, document_count, snapshot_json
+      id, profile_id, title, mode, role, company, round, archived_at, question_count, answer_count, document_count, snapshot_json
     )
     VALUES (
-      @id, @title, @mode, @role, @company, @round, @archivedAt,
+      @id, @profileId, @title, @mode, @role, @company, @round, @archivedAt,
       @questionCount, @answerCount, @documentCount, @snapshotJson
     )
     ON CONFLICT(id) DO UPDATE SET
+      profile_id = excluded.profile_id,
       title = excluded.title,
       mode = excluded.mode,
       role = excluded.role,
@@ -1272,12 +1799,13 @@ function insertSessionArchive(
       snapshot_json = excluded.snapshot_json
   `).run({
     ...summary,
+    profileId,
     snapshotJson: JSON.stringify(state),
   });
 }
 
-function readSession(db: Database.Database): SessionSetup | null {
-  const row = db.prepare("SELECT * FROM sessions WHERE singleton_id = 1").get() as SessionRow | undefined;
+function readSession(db: Database.Database, profileId = readActiveProfileId(db)): SessionSetup | null {
+  const row = db.prepare("SELECT * FROM sessions WHERE profile_id = ?").get(profileId) as SessionRow | undefined;
   if (!row) return null;
   return normalizeSessionSetup({
     id: row.id,
@@ -1296,7 +1824,7 @@ function readSession(db: Database.Database): SessionSetup | null {
     voiceProfile: (row.voice_profile || "staff-engineer") as SessionSetup["voiceProfile"],
     customVoice: row.custom_voice || "",
     answerFormat: (row.answer_format || "technical") as SessionSetup["answerFormat"],
-    documents: readDocuments(db),
+    documents: readDocuments(db, profileId),
   });
 }
 
@@ -1313,8 +1841,8 @@ function normalizeSessionSetup(session: SessionSetup): SessionSetup {
   };
 }
 
-function readDocuments(db: Database.Database): DocumentSummary[] {
-  return (db.prepare("SELECT * FROM documents ORDER BY rowid").all() as DocumentRow[]).map((row) => ({
+function readDocuments(db: Database.Database, profileId = readActiveProfileId(db)): DocumentSummary[] {
+  return (db.prepare("SELECT * FROM documents WHERE profile_id = ? ORDER BY rowid").all(profileId) as DocumentRow[]).map((row) => ({
     id: row.id,
     name: row.name,
     category: row.category as DocumentSummary["category"],
@@ -1323,21 +1851,23 @@ function readDocuments(db: Database.Database): DocumentSummary[] {
   }));
 }
 
-function readDocumentIndexStatus(db: Database.Database): DocumentIndexStatus {
-  const documents = readDocuments(db);
+function readDocumentIndexStatus(db: Database.Database, profileId = readActiveProfileId(db)): DocumentIndexStatus {
+  const documents = readDocuments(db, profileId);
   const chunkCounts = new Map<string, number>(
     (db.prepare(`
       SELECT document_id, COUNT(*) AS chunk_count
       FROM document_chunks
+      WHERE profile_id = ?
       GROUP BY document_id
-    `).all() as Array<{ document_id: string; chunk_count: number }>).map((row) => [row.document_id, row.chunk_count]),
+    `).all(profileId) as Array<{ document_id: string; chunk_count: number }>).map((row) => [row.document_id, row.chunk_count]),
   );
   const embeddingCounts = new Map<string, number>(
     (db.prepare(`
       SELECT document_id, COUNT(*) AS embedding_count
       FROM document_embeddings
+      WHERE profile_id = ?
       GROUP BY document_id
-    `).all() as Array<{ document_id: string; embedding_count: number }>).map((row) => [row.document_id, row.embedding_count]),
+    `).all(profileId) as Array<{ document_id: string; embedding_count: number }>).map((row) => [row.document_id, row.embedding_count]),
   );
   return buildDocumentIndexStatus(documents, chunkCounts, embeddingCounts);
 }
@@ -1383,7 +1913,7 @@ function buildDocumentIndexStatus(
   };
 }
 
-function readDocumentChunks(db: Database.Database): RetrievedDocumentChunk[] {
+function readDocumentChunks(db: Database.Database, profileId = readActiveProfileId(db)): RetrievedDocumentChunk[] {
   return (db.prepare(`
     SELECT
       document_chunks.id,
@@ -1392,9 +1922,12 @@ function readDocumentChunks(db: Database.Database): RetrievedDocumentChunk[] {
       documents.category,
       document_chunks.text
     FROM document_chunks
-    INNER JOIN documents ON documents.id = document_chunks.document_id
+    INNER JOIN documents
+      ON documents.id = document_chunks.document_id
+      AND documents.profile_id = document_chunks.profile_id
+    WHERE document_chunks.profile_id = ?
     ORDER BY document_chunks.rowid
-  `).all() as DocumentChunkRow[]).map((row) => ({
+  `).all(profileId) as DocumentChunkRow[]).map((row) => ({
     id: row.id,
     documentId: row.document_id,
     documentName: row.document_name,
@@ -1404,8 +1937,8 @@ function readDocumentChunks(db: Database.Database): RetrievedDocumentChunk[] {
   }));
 }
 
-function readTranscriptEvents(db: Database.Database): TranscriptEvent[] {
-  return (db.prepare("SELECT * FROM transcript_events ORDER BY timestamp, rowid").all() as TranscriptRow[]).map(
+function readTranscriptEvents(db: Database.Database, profileId = readActiveProfileId(db)): TranscriptEvent[] {
+  return (db.prepare("SELECT * FROM transcript_events WHERE profile_id = ? ORDER BY timestamp, rowid").all(profileId) as TranscriptRow[]).map(
     (row) => ({
       id: row.id,
       source: row.source as TranscriptEvent["source"],
@@ -1416,35 +1949,35 @@ function readTranscriptEvents(db: Database.Database): TranscriptEvent[] {
   );
 }
 
-function readQuestions(db: Database.Database): QuestionCard[] {
-  return (db.prepare("SELECT * FROM question_cards ORDER BY created_at, rowid").all() as QuestionRow[]).map(
+function readQuestions(db: Database.Database, profileId = readActiveProfileId(db)): QuestionCard[] {
+  return (db.prepare("SELECT * FROM question_cards WHERE profile_id = ? ORDER BY created_at, rowid").all(profileId) as QuestionRow[]).map(
     questionFromRow,
   );
 }
 
-function readQuestionById(db: Database.Database, id: string): QuestionCard | undefined {
-  const row = db.prepare("SELECT * FROM question_cards WHERE id = ?").get(id) as QuestionRow | undefined;
+function readQuestionById(db: Database.Database, id: string, profileId = readActiveProfileId(db)): QuestionCard | undefined {
+  const row = db.prepare("SELECT * FROM question_cards WHERE id = ? AND profile_id = ?").get(id, profileId) as QuestionRow | undefined;
   return row ? questionFromRow(row) : undefined;
 }
 
-function readQuestionByRawText(db: Database.Database, rawText: string): QuestionCard | undefined {
-  const row = db.prepare("SELECT * FROM question_cards WHERE raw_text = ?").get(rawText) as
+function readQuestionByRawText(db: Database.Database, rawText: string, profileId = readActiveProfileId(db)): QuestionCard | undefined {
+  const row = db.prepare("SELECT * FROM question_cards WHERE raw_text = ? AND profile_id = ?").get(rawText, profileId) as
     | QuestionRow
     | undefined;
   return row ? questionFromRow(row) : undefined;
 }
 
-function readAnswerDrafts(db: Database.Database): AnswerDraft[] {
-  return (db.prepare("SELECT * FROM answer_drafts ORDER BY rowid").all() as AnswerRow[]).map(answerFromRow);
+function readAnswerDrafts(db: Database.Database, profileId = readActiveProfileId(db)): AnswerDraft[] {
+  return (db.prepare("SELECT * FROM answer_drafts WHERE profile_id = ? ORDER BY rowid").all(profileId) as AnswerRow[]).map(answerFromRow);
 }
 
-function readAnswerDraftById(db: Database.Database, id: string): AnswerDraft | undefined {
-  const row = db.prepare("SELECT * FROM answer_drafts WHERE id = ?").get(id) as AnswerRow | undefined;
+function readAnswerDraftById(db: Database.Database, id: string, profileId = readActiveProfileId(db)): AnswerDraft | undefined {
+  const row = db.prepare("SELECT * FROM answer_drafts WHERE id = ? AND profile_id = ?").get(id, profileId) as AnswerRow | undefined;
   return row ? answerFromRow(row) : undefined;
 }
 
-function readAnswerDraftByQuestionId(db: Database.Database, questionId: string): AnswerDraft | undefined {
-  const row = db.prepare("SELECT * FROM answer_drafts WHERE question_id = ?").get(questionId) as
+function readAnswerDraftByQuestionId(db: Database.Database, questionId: string, profileId = readActiveProfileId(db)): AnswerDraft | undefined {
+  const row = db.prepare("SELECT * FROM answer_drafts WHERE question_id = ? AND profile_id = ?").get(questionId, profileId) as
     | AnswerRow
     | undefined;
   return row ? answerFromRow(row) : undefined;
@@ -1459,20 +1992,44 @@ function readPromptById(db: Database.Database, id: string): PromptSetting | unde
   return row ? promptFromRow(row) : undefined;
 }
 
-function readSessionArchives(db: Database.Database): SessionArchiveSummary[] {
+function readSessionArchives(db: Database.Database, profileId = readActiveProfileId(db)): SessionArchiveSummary[] {
   return (db.prepare(`
     SELECT id, title, mode, role, company, round, archived_at, question_count, answer_count, document_count
     FROM session_archives
+    WHERE profile_id = ?
     ORDER BY archived_at DESC, rowid DESC
-  `).all() as SessionArchiveRow[]).map(sessionArchiveFromRow);
+  `).all(profileId) as SessionArchiveRow[]).map(sessionArchiveFromRow);
 }
 
-function readSessionArchiveState(db: Database.Database, id: string): RepositoryState | undefined {
-  const row = db.prepare("SELECT snapshot_json FROM session_archives WHERE id = ?").get(id) as
+function readSessionArchiveState(db: Database.Database, id: string, profileId = readActiveProfileId(db)): RepositoryState | undefined {
+  const row = db.prepare("SELECT snapshot_json FROM session_archives WHERE id = ? AND profile_id = ?").get(id, profileId) as
     | { snapshot_json: string }
     | undefined;
   if (!row) return undefined;
   return normalizeState(parseJson<Partial<RepositoryState>>(row.snapshot_json, {}));
+}
+
+function profileFromRow(row: ProfileRow): LocalProfile {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastActiveAt: row.last_active_at,
+  };
+}
+
+function auditEventFromRow(row: AuditEventRow): AuditEvent {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    eventType: row.event_type,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    message: row.message,
+    metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
+    createdAt: row.created_at,
+  };
 }
 
 function questionFromRow(row: QuestionRow): QuestionCard {
@@ -1549,7 +2106,12 @@ function summarizeArchive(id: string, archivedAt: number, state: RepositoryState
 }
 
 function normalizeState(state: Partial<RepositoryState>): RepositoryState {
+  const profiles = cloneProfiles(state.profiles);
+  const activeProfile = cloneProfile(state.activeProfile ?? profiles[0] ?? createDefaultProfile());
+  const normalizedProfiles = upsertById(profiles, activeProfile);
   return {
+    activeProfile,
+    profiles: normalizedProfiles,
     session: cloneSession(state.session ?? null),
     documents: (state.documents ?? state.session?.documents ?? []).map(cloneDocument),
     transcriptEvents: (state.transcriptEvents ?? []).map(cloneTranscriptEvent),
@@ -1557,10 +2119,13 @@ function normalizeState(state: Partial<RepositoryState>): RepositoryState {
     answerDrafts: (state.answerDrafts ?? []).map(cloneAnswer),
     prompts: clonePrompts(state.prompts),
     providerSettings: cloneProviderSettings(state.providerSettings),
+    auditEvents: (state.auditEvents ?? []).map(cloneAuditEvent),
   };
 }
 
 function snapshotFromParts(
+  activeProfile: LocalProfile,
+  profiles: LocalProfile[],
   session: SessionSetup | null,
   documents: DocumentSummary[],
   transcriptEvents: TranscriptEvent[],
@@ -1568,9 +2133,12 @@ function snapshotFromParts(
   answerDrafts: AnswerDraft[],
   prompts: PromptSetting[],
   providerSettings: ProviderSettings = defaultProviderSettings(),
+  auditEvents: AuditEvent[] = [],
 ): RepositoryState {
   const clonedDocuments = documents.map(cloneDocument);
   return {
+    activeProfile: cloneProfile(activeProfile),
+    profiles: cloneProfiles(profiles),
     session: session ? { ...session, documents: clonedDocuments } : null,
     documents: clonedDocuments,
     transcriptEvents: transcriptEvents.map(cloneTranscriptEvent),
@@ -1578,6 +2146,43 @@ function snapshotFromParts(
     answerDrafts: answerDrafts.map(cloneAnswer),
     prompts: clonePrompts(prompts),
     providerSettings: cloneProviderSettings(providerSettings),
+    auditEvents: auditEvents.map(cloneAuditEvent),
+  };
+}
+
+function makeAuditEvent(
+  eventType: string,
+  entityType: string,
+  entityId: string | null,
+  message: string,
+  metadata: Record<string, unknown> = {},
+  profileId: string | null = null,
+  createdAt = Date.now(),
+): AuditEvent {
+  return {
+    id: `audit-${createdAt}-${Math.random().toString(16).slice(2, 10)}`,
+    profileId,
+    eventType,
+    entityType,
+    entityId,
+    message,
+    metadata,
+    createdAt,
+  };
+}
+
+function cloneProfile(profile: LocalProfile): LocalProfile {
+  return { ...profile };
+}
+
+function cloneProfiles(profiles: LocalProfile[] | undefined): LocalProfile[] {
+  return profiles?.length ? profiles.map(cloneProfile) : [createDefaultProfile()];
+}
+
+function cloneAuditEvent(event: AuditEvent): AuditEvent {
+  return {
+    ...event,
+    metadata: { ...event.metadata },
   };
 }
 
@@ -1667,6 +2272,7 @@ function parseJson<T>(value: string, fallback: T): T {
 }
 
 interface SessionRow {
+  profile_id?: string;
   id: string;
   mode: string;
   title: string;
@@ -1686,6 +2292,7 @@ interface SessionRow {
 }
 
 interface DocumentRow {
+  profile_id?: string;
   id: string;
   name: string;
   category: string;
@@ -1694,6 +2301,7 @@ interface DocumentRow {
 }
 
 interface DocumentChunkRow {
+  profile_id?: string;
   id: string;
   document_id: string;
   document_name: string;
@@ -1702,6 +2310,7 @@ interface DocumentChunkRow {
 }
 
 interface TranscriptRow {
+  profile_id?: string;
   id: string;
   source: string;
   text: string;
@@ -1710,6 +2319,7 @@ interface TranscriptRow {
 }
 
 interface QuestionRow {
+  profile_id?: string;
   id: string;
   raw_text: string;
   framed_question: string;
@@ -1721,6 +2331,7 @@ interface QuestionRow {
 }
 
 interface AnswerRow {
+  profile_id?: string;
   id: string;
   question_id: string;
   format: string;
@@ -1741,6 +2352,7 @@ interface PromptRow {
 }
 
 interface SessionArchiveRow {
+  profile_id?: string;
   id: string;
   title: string;
   mode: string;
@@ -1751,4 +2363,23 @@ interface SessionArchiveRow {
   question_count: number;
   answer_count: number;
   document_count: number;
+}
+
+interface ProfileRow {
+  id: string;
+  name: string;
+  created_at: number;
+  updated_at: number;
+  last_active_at: number;
+}
+
+interface AuditEventRow {
+  id: string;
+  profile_id: string | null;
+  event_type: string;
+  entity_type: string;
+  entity_id: string | null;
+  message: string;
+  metadata_json: string;
+  created_at: number;
 }

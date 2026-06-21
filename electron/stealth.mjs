@@ -10,8 +10,8 @@ export const STEALTH_PERSONAS = Object.freeze({
 });
 
 export const DEFAULT_STEALTH_CONFIG = Object.freeze({
-  enabled: true,
-  persona: "terminal",
+  enabled: false,
+  persona: "none",
   defaultClickThrough: false,
   autoHideOnBlur: false
 });

@@ -206,8 +206,13 @@ function createWindow(role, options) {
 
     return { action: "deny" };
   });
+  window.webContents.on("page-title-updated", (event) => {
+    event.preventDefault();
+    applyWindowTitle(window, stealthConfig);
+  });
 
   applyOverlayWindowBehavior(window, role);
+  applyWindowTitle(window, stealthConfig);
 
   window.webContents.on("will-navigate", (event, url) => {
     if (!isAllowedAppUrl(url)) {
@@ -272,7 +277,7 @@ function applyStealthToAllWindows(config) {
   }
 }
 
-function setOverlayClickThrough(enabled) {
+function setOverlayClickThrough(enabled, notify = true) {
   overlayClickThrough = Boolean(enabled);
   const overlay = windows.overlay;
   if (overlay && !overlay.isDestroyed() && overlay.isVisible()) {
@@ -281,6 +286,9 @@ function setOverlayClickThrough(enabled) {
     } catch (error) {
       console.warn("[stealth] could not change click-through:", error?.message);
     }
+  }
+  if (notify) {
+    broadcast("stealth:changed", { config: stealthConfig, overlayClickThrough });
   }
   return { clickThrough: overlayClickThrough };
 }
@@ -645,6 +653,9 @@ ipcMain.handle("windows:setClickThrough", async (event, role, enabled) => {
   const window = getTrustedWindowFromEvent(event);
   if (!window) throw new Error("Untrusted window request.");
   if (!["overlay", "answer"].includes(role)) throw new Error(`Invalid click-through window role: ${role}`);
+  if (role === "overlay") {
+    return { role, ...setOverlayClickThrough(enabled) };
+  }
   const target = windows[role];
   if (!target || target.isDestroyed()) throw new Error(`Window is unavailable: ${role}`);
   target.setIgnoreMouseEvents(Boolean(enabled), { forward: true });
@@ -703,7 +714,7 @@ ipcMain.handle("stealth:update", async (event, patch) => {
   applyStealthToAllWindows(stealthConfig);
 
   if (stealthConfig.defaultClickThrough !== overlayClickThrough && !windows.overlay?.isVisible()) {
-    overlayClickThrough = stealthConfig.defaultClickThrough;
+    setOverlayClickThrough(stealthConfig.defaultClickThrough, false);
   }
 
   broadcast("stealth:changed", { config: stealthConfig, overlayClickThrough });

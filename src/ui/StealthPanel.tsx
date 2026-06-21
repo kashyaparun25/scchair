@@ -61,10 +61,10 @@ const PERSONA_ICONS: Record<string, typeof TerminalSquare> = {
 };
 
 const PERSONA_NOTES: Record<string, string> = {
-  none: "Show as Second Chair in the dock and Activity Monitor.",
-  terminal: "Dock, menu bar, and Activity Monitor show 'Terminal'. Default for stealth.",
-  activity: "Disguise as the system Activity Monitor.",
-  settings: "Disguise as System Settings."
+  none: "Use the normal Second Chair app and window name.",
+  terminal: "Use Terminal-style app and window labels.",
+  activity: "Use Activity Monitor-style app and window labels.",
+  settings: "Use System Settings-style app and window labels."
 };
 
 function describeShortcut(accelerator: string | undefined): string {
@@ -117,12 +117,12 @@ export function StealthPanel() {
         <header className="panel-header">
           <div className="panel-header-icon"><ShieldCheck size={18} /></div>
           <div>
-            <span className="eyebrow">Stealth</span>
-            <h3>Undetectability</h3>
+            <span className="eyebrow">Window controls</span>
+            <h3>Low-profile overlay</h3>
           </div>
         </header>
         <p className="settings-note">
-          Process disguise, panic toggle, and overlay shortcuts run inside the Second Chair desktop app.
+          Window labels, click-through, quick hide, and overlay shortcuts run inside the Second Chair desktop app.
           Launch via <code>npm run dev:desktop</code> or the one-line installer to use them.
         </p>
       </section>
@@ -135,11 +135,11 @@ export function StealthPanel() {
         <header className="panel-header">
           <div className="panel-header-icon"><ShieldCheck size={18} /></div>
           <div>
-            <span className="eyebrow">Stealth</span>
-            <h3>Undetectability</h3>
+            <span className="eyebrow">Window controls</span>
+            <h3>Low-profile overlay</h3>
           </div>
         </header>
-        <p className="settings-note">{status || "Loading stealth settings..."}</p>
+        <p className="settings-note">{status || "Loading window controls..."}</p>
       </section>
     );
   }
@@ -155,7 +155,7 @@ export function StealthPanel() {
       setInfo((current) => (current ? { ...current, ...result, personas: current.personas, shortcuts: current.shortcuts } : current));
       setStatus("Saved.");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Stealth update failed.");
+      setStatus(error instanceof Error ? error.message : "Window control update failed.");
     }
   };
 
@@ -176,13 +176,13 @@ export function StealthPanel() {
       <header className="panel-header">
         <div className="panel-header-icon"><ShieldCheck size={18} /></div>
         <div>
-          <span className="eyebrow">Stealth</span>
-          <h3>Undetectability</h3>
+          <span className="eyebrow">Window controls</span>
+          <h3>Low-profile overlay</h3>
         </div>
       </header>
 
       <p className="settings-note">
-        Hide the app from the dock, Activity Monitor, and screen-share captures. Disabling restores the real name.
+        Tune app/window labels and overlay behavior for a lower-profile desktop experience. These controls only affect presentation and interaction behavior.
       </p>
 
       <div className="stealth-row">
@@ -193,14 +193,14 @@ export function StealthPanel() {
             onChange={(event) => void update({ enabled: event.target.checked })}
           />
           <span>
-            <strong>Enable stealth mode</strong>
-            <span className="settings-note">Disguise the running process and overlay windows.</span>
+            <strong>Use alternate app labels</strong>
+            <span className="settings-note">Apply the selected label to the app process and desktop windows.</span>
           </span>
         </label>
       </div>
 
       <div className={`stealth-body ${config.enabled ? "" : "disabled"}`}>
-        <span className="field-label">Disguise persona</span>
+        <span className="field-label">App label</span>
         <div className="stealth-persona-grid">
           {personas.map((persona) => {
             const Icon = PERSONA_ICONS[persona.id] || ShieldCheck;
@@ -232,7 +232,7 @@ export function StealthPanel() {
             />
             <span>
               <strong><GripHorizontal size={14} /> Click-through overlay by default</strong>
-              <span className="settings-note">Overlay starts as click-through. Press {describeShortcut(shortcuts?.toggleInteraction)} to flip.</span>
+              <span className="settings-note">Overlay starts in pass-through mode. Press {describeShortcut(shortcuts?.toggleInteraction)} to flip.</span>
             </span>
           </label>
           <label className="stealth-toggle">
@@ -244,14 +244,14 @@ export function StealthPanel() {
             />
             <span>
               <strong><EyeOff size={14} /> Auto-hide overlay when it loses focus</strong>
-              <span className="settings-note">Overlay disappears when you click away. Re-open with the shortcut.</span>
+              <span className="settings-note">Overlay hides when you click away. Re-open with the shortcut.</span>
             </span>
           </label>
         </div>
 
         <div className="stealth-shortcuts" aria-label="Stealth shortcuts">
           <div className="stealth-shortcut">
-            <span>Panic / restore overlays</span>
+            <span>Quick hide / restore overlays</span>
             <kbd>{describeShortcut(shortcuts?.toggleVisibility)}</kbd>
             <button
               type="button"

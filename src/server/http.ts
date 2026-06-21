@@ -13,6 +13,10 @@ import type {
   TranscriptEvent,
   VoiceProfile,
 } from "../shared/domain";
+import {
+  answerFormats,
+  responsePersonas,
+} from "../shared/domain";
 import { detectQuestionFromText } from "./questionDetection";
 import {
   AnswerGenerationError,
@@ -173,6 +177,45 @@ app.get("/api/bootstrap", (_req, res) => {
   });
 });
 
+app.get("/api/profiles", (_req, res) => {
+  res.json({
+    activeProfile: repository.getActiveProfile(),
+    profiles: repository.listProfiles(),
+  });
+});
+
+app.post("/api/profiles", (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  if (!name) {
+    sendApiError(res, new ApiError(400, "PROFILE_NAME_REQUIRED", "Profile name is required."));
+    return;
+  }
+  const profile = repository.createProfile({ name });
+  res.status(201).json({
+    profile,
+    activeProfile: repository.getActiveProfile(),
+    profiles: repository.listProfiles(),
+  });
+});
+
+app.post("/api/profiles/:id/select", (req, res) => {
+  const profile = repository.selectProfile(req.params.id);
+  if (!profile) {
+    sendApiError(res, new ApiError(404, "PROFILE_NOT_FOUND", "Profile not found."));
+    return;
+  }
+  res.json({
+    activeProfile: profile,
+    profiles: repository.listProfiles(),
+    state: repository.snapshot(),
+  });
+});
+
+app.get("/api/audit-events", (req, res) => {
+  const limit = Math.max(1, Math.min(200, Number(req.query.limit || 50)));
+  res.json(repository.listAuditEvents(limit));
+});
+
 function latestBy<T>(items: T[], timestamp: (item: T) => number): T | null {
   return items.reduce<T | null>((latest, item) => {
     if (!latest || timestamp(item) >= timestamp(latest)) return item;
@@ -236,26 +279,15 @@ function buildMeetingTitle(topic = "", audience = ""): string {
 }
 
 function isVoiceProfile(value: unknown): value is VoiceProfile {
-  return typeof value === "string" && [
-    "product-lead",
-    "staff-engineer",
-    "executive",
-    "consultant",
-    "custom",
-  ].includes(value);
+  return typeof value === "string" && responsePersonas.includes(value as VoiceProfile);
 }
 
 function isAnswerFormat(value: unknown): value is AnswerFormat {
-  return typeof value === "string" && [
-    "quick-bullets",
-    "star",
-    "full",
-    "technical",
-    "system-design",
-    "coding",
-    "executive",
-    "follow-up",
-  ].includes(value);
+  return typeof value === "string" && answerFormats.includes(value as AnswerFormat);
+}
+
+function normalizeAnswerFormat(value: unknown): AnswerFormat | undefined {
+  return isAnswerFormat(value) ? value : undefined;
 }
 
 function mergeSessionInput(existing: SessionSetup | null, input: Record<string, unknown>): SessionSetup {
@@ -665,7 +697,7 @@ app.post("/api/questions/latest/answer", async (req, res, next) => {
 
   try {
     const existingAnswer = !input.regenerate ? repository.getAnswerDraft(question.id) : undefined;
-    const answer = existingAnswer || await answerQuestion(question, input.format as AnswerFormat | undefined);
+    const answer = existingAnswer || await answerQuestion(question, normalizeAnswerFormat(input.format));
     res.status(existingAnswer ? 200 : 201).json({ question, answer, state: latestOverlayState() });
   } catch (error) {
     next(error);
@@ -679,7 +711,7 @@ app.post("/api/questions/:id/answer", async (req, res, next) => {
     return;
   }
   try {
-    const answer = await answerQuestion(question, req.body?.format as AnswerFormat | undefined);
+    const answer = await answerQuestion(question, normalizeAnswerFormat(req.body?.format));
     res.status(201).json(answer);
   } catch (error) {
     next(error);
@@ -700,7 +732,7 @@ app.post("/api/overlay/screenshot-prompt", async (req, res, next) => {
       imageMimeType: typeof input.imageMimeType === "string" ? input.imageMimeType : undefined,
       prompt: typeof input.prompt === "string" ? input.prompt : undefined,
       domain: typeof input.domain === "string" ? input.domain : undefined,
-      format: input.format as AnswerFormat | undefined,
+      format: normalizeAnswerFormat(input.format),
       language: typeof input.language === "string" ? input.language : undefined,
       session: repository.getSession(),
     }, repository.getProviderSettings(), makeId);
@@ -850,7 +882,8 @@ function dedupeRetrievedChunks(chunks: RetrievedDocumentChunk[]): RetrievedDocum
 }
 
 function resolveResponseProfile(session: SessionSetup, override?: string): string | undefined {
-  if (override) return override;
+  if (override?.startsWith("custom:")) return override;
+  if (override && override !== "custom") return override;
   if (session.voiceProfile === "custom") {
     const custom = session.customVoice.trim();
     return custom ? `custom:${custom}` : undefined;
@@ -885,7 +918,7 @@ app.post("/api/questions/:id/answer/stream", async (req, res) => {
   });
 
   try {
-    const answerInput = await buildAnswerInput(question, session, req.body?.format as AnswerFormat | undefined, {
+    const answerInput = await buildAnswerInput(question, session, normalizeAnswerFormat(req.body?.format), {
       responseProfile: typeof req.body?.profile === "string" ? req.body.profile : undefined,
     });
     syncResolvedQuestion(question, answerInput.question);

@@ -448,7 +448,7 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
     rank: index + 1,
   })) ?? [];
 
-  const profileLine = profileInstruction(input.responseProfile);
+  const profileLine = responsePersonaInstruction(input.responseProfile);
   const modeLine = modeInstruction(input.session);
   const roundLine = roundInstruction(input.session.round);
   const responseStyleLine = responseStyleInstruction(input.session.responseStyle);
@@ -497,6 +497,8 @@ function buildPromptPayload(input: GenerateAnswerInput): PromptPayload {
         meetingNotes: input.session.meetingNotes,
         responseStyle: input.session.responseStyle,
         language: input.session.language,
+        responsePersona: input.session.voiceProfile,
+        customPersona: input.session.customVoice,
         voiceProfile: input.session.voiceProfile,
         customVoice: input.session.customVoice,
         answerFormat: input.session.answerFormat,
@@ -535,15 +537,22 @@ function modeInstruction(session: GenerateAnswerInput["session"]): string {
   ].filter(Boolean).join("\n");
 }
 
-function profileInstruction(profile?: string): string {
+function responsePersonaInstruction(profile?: string): string {
   if (profile?.startsWith("custom:")) {
-    return `Voice: ${profile.slice("custom:".length)}`;
+    return `Response persona: ${profile.slice("custom:".length)}`;
   }
-  if (profile === "product-lead") return "Voice: product leader — user outcomes, prioritization, cross-functional influence.";
-  if (profile === "executive") return "Voice: executive — concise, strategic, business impact first.";
-  if (profile === "consultant") return "Voice: consultant — structured, hypothesis-driven, client-safe.";
-  if (profile === "staff-engineer") return "Voice: staff engineer — systems thinking, tradeoffs, technical clarity.";
-  return "Voice: confident interview candidate — clear, specific, and easy to read aloud.";
+  if (profile === "product-lead") return "Response persona: product leader — user outcomes, prioritization, cross-functional influence.";
+  if (profile === "executive") return "Response persona: executive — concise, strategic, business impact first.";
+  if (profile === "consultant") return "Response persona: consultant — structured, hypothesis-driven, client-safe.";
+  if (profile === "support") return "Response persona: support specialist — empathetic, practical, customer-aware, resolution oriented.";
+  if (profile === "sales-engineer") return "Response persona: sales engineer — discovery-led, technically credible, focused on fit and value.";
+  if (profile === "data-analyst") return "Response persona: data analyst — metrics-driven, assumption-aware, clear about evidence and tradeoffs.";
+  if (profile === "designer") return "Response persona: designer — user-centered, craft-aware, practical about constraints and iteration.";
+  if (profile === "engineering-manager") return "Response persona: engineering manager — team outcomes, execution quality, coaching, ownership.";
+  if (profile === "recruiter-hiring-manager") return "Response persona: recruiter or hiring manager — role fit, signal quality, motivation, decision clarity.";
+  if (profile === "technical-support") return "Response persona: technical support — calm troubleshooting, clear steps, customer impact, escalation judgment.";
+  if (profile === "staff-engineer") return "Response persona: staff engineer — systems thinking, tradeoffs, technical clarity.";
+  return "Response persona: confident interview candidate — clear, specific, and easy to read aloud.";
 }
 
 function roundInstruction(round: string): string {
@@ -573,10 +582,12 @@ function responseStyleInstruction(style: string): string {
 function formatInstruction(format?: string): string {
   if (format === "star") return "Preferred format: STAR — situation, task, action, result woven naturally.";
   if (format === "quick-bullets") return "Preferred format: quick bullets — crisp points, easy to scan while speaking.";
+  if (format === "full") return "Preferred format: full answer — a complete, speakable response with a clear beginning, middle, and close.";
   if (format === "technical") return "Preferred format: technical — architecture, tradeoffs, and specifics.";
   if (format === "executive") return "Preferred format: executive — headline first, supporting detail second.";
   if (format === "system-design") return "Preferred format: system design — requirements, components, scaling.";
   if (format === "coding") return "Preferred format: coding — approach, complexity, edge cases.";
+  if (format === "follow-up") return "Preferred format: follow-up — answer the narrow clarification directly and stay consistent with prior answers.";
   return format ? `Preferred format: ${format}.` : "";
 }
 

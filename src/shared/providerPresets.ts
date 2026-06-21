@@ -16,6 +16,16 @@ export interface StackModelDefaults {
   embeddings: string;
 }
 
+export type SttLanguageScope = "english-only" | "multilingual" | "provider-default";
+
+export interface SttLanguageMetadata {
+  scope: SttLanguageScope;
+  defaultLanguageCode: string;
+  languageCodeOption?: string;
+  supportedLanguageCodes?: string[];
+  note: string;
+}
+
 export interface ProviderPreset {
   id: ProviderPresetId;
   label: string;
@@ -33,6 +43,17 @@ const OPENAI_BASE = "https://api.openai.com/v1";
 const ANTHROPIC_BASE = "https://api.anthropic.com";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 const NVIDIA_BASE = "https://integrate.api.nvidia.com/v1";
+
+const PARAKEET_MULTILINGUAL_SAMPLE_CODES = [
+  "auto",
+  "en-US",
+  "es-ES",
+  "fr-FR",
+  "de-DE",
+  "it-IT",
+  "pt-BR",
+  "hi-IN",
+] as const;
 
 export const PROVIDER_PRESETS: Record<ProviderPresetId, ProviderPreset> = {
   openai: {
@@ -156,6 +177,9 @@ export const PROVIDER_PRESETS: Record<ProviderPresetId, ProviderPreset> = {
         rivaTimeoutMs: 30000,
       },
     }),
+    notes: [
+      "Default Parakeet CTC captions are English-only. Switch the caption model to a multilingual NVIDIA ASR model when you need non-English live captions.",
+    ],
   },
 };
 
@@ -311,4 +335,70 @@ export function modelFieldsForStack(stackId: ProviderPresetId): Array<{
     { key: "embeddings", label: "Search embedding model", hint: preset.models.embeddings },
   ];
   return fields;
+}
+
+export function sttLanguageMetadataForModel({
+  adapterType,
+  model,
+}: {
+  adapterType?: string | null;
+  model: string;
+}): SttLanguageMetadata {
+  const normalized = model.toLowerCase();
+
+  if (adapterType === "nvidia-riva-stt") {
+    if (normalized.includes("parakeet-ctc-1.1b")) {
+      return {
+        scope: "english-only",
+        defaultLanguageCode: "en-US",
+        languageCodeOption: "rivaLanguageCode",
+        supportedLanguageCodes: ["en-US"],
+        note: "NVIDIA Parakeet CTC 1.1B ASR is an English transcription model. Use a multilingual Parakeet/Nemotron ASR model for non-English captions.",
+      };
+    }
+    if (
+      normalized.includes("multilingual")
+      || normalized.includes("parakeet-tdt-0.6b-v3")
+      || normalized.includes("parakeet-1.1b-rnnt")
+      || normalized.includes("nemotron")
+    ) {
+      return {
+        scope: "multilingual",
+        defaultLanguageCode: "auto",
+        languageCodeOption: "rivaLanguageCode",
+        supportedLanguageCodes: [...PARAKEET_MULTILINGUAL_SAMPLE_CODES],
+        note: "This NVIDIA ASR model is treated as multilingual. Use auto when the model supports language detection, or set a specific BCP-47 language code.",
+      };
+    }
+    return {
+      scope: "provider-default",
+      defaultLanguageCode: "en-US",
+      languageCodeOption: "rivaLanguageCode",
+      note: "NVIDIA Riva language support depends on the selected ASR model. Confirm the model's language codes before changing rivaLanguageCode.",
+    };
+  }
+
+  if (adapterType === "openai-realtime-transcription" || adapterType === "openai-transcriptions") {
+    return {
+      scope: "multilingual",
+      defaultLanguageCode: "en",
+      languageCodeOption: "language",
+      note: "OpenAI transcription models support multilingual input; an ISO language hint can improve recognition.",
+    };
+  }
+
+  if (adapterType === "deepgram-streaming") {
+    return {
+      scope: "multilingual",
+      defaultLanguageCode: "multi",
+      languageCodeOption: "language",
+      note: "Deepgram language support depends on the selected model and language option.",
+    };
+  }
+
+  return {
+    scope: "provider-default",
+    defaultLanguageCode: "",
+    note: "Language support depends on the selected speech-to-text provider and model.",
+  };
 }
