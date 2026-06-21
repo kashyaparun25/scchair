@@ -6192,3 +6192,141 @@ h1 {
   background: linear-gradient(180deg, #f8fafc, #e7edf5);
   border-color: #cfd8e5;
 }
+
+/* Electron shell contract: fixed app viewport, draggable chrome, and bounded panes. */
+html[data-view="main"],
+html[data-view="main"] body {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+body:has(.console-reference-shell) {
+  height: 100vh;
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.console-app-frame.console-reference-shell {
+  width: 100%;
+  height: 100vh;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 0;
+}
+
+.reference-titlebar {
+  -webkit-app-region: drag;
+  app-region: drag;
+  user-select: none;
+}
+
+.reference-titlebar button,
+.reference-titlebar select,
+.reference-titlebar input,
+.reference-titlebar textarea,
+.reference-toolbar,
+.reference-toolbar *,
+.reference-workspace,
+.reference-workspace *,
+.setup-modal,
+.setup-modal *,
+.utility-drawer,
+.utility-drawer *,
+.answer-window-shell,
+.answer-window-shell * {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+html[data-platform="darwin"] .reference-titlebar {
+  padding-left: 78px;
+}
+
+html[data-platform="win32"] .reference-titlebar {
+  padding-right: 150px;
+}
+
+.console-reference-shell .reference-toolbar {
+  grid-template-columns: minmax(220px, 320px) minmax(240px, 380px) minmax(168px, 230px) minmax(0, 1fr);
+  gap: clamp(10px, 1.2vw, 24px);
+  min-width: 0;
+}
+
+.console-reference-shell .reference-toolbar-actions {
+  min-width: 0;
+  justify-content: flex-end;
+  gap: clamp(8px, 0.9vw, 18px);
+}
+
+.console-reference-shell .reference-workspace {
+  grid-template-columns: clamp(280px, 25vw, 340px) minmax(420px, 1fr) clamp(360px, 30vw, 458px);
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+
+.console-reference-shell .reference-sidebar,
+.console-reference-shell .reference-center,
+.console-reference-shell .reference-answer-panel {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.reference-answer-panel {
+  overflow: hidden;
+}
+
+.reference-answer-copy,
+.reference-answer-copy p,
+.reference-answer-copy li,
+.reference-question-card {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1320px) {
+  html[data-platform="darwin"] .reference-titlebar {
+    padding-left: 72px;
+  }
+
+  .console-reference-shell .reference-toolbar {
+    grid-template-columns: minmax(200px, 280px) minmax(230px, 340px) minmax(150px, 210px) minmax(0, 1fr);
+  }
+
+  .console-reference-shell .reference-icon-action {
+    min-width: 56px;
+    padding-inline: 6px;
+  }
+
+  .console-reference-shell .reference-icon-action span {
+    font-size: 0.68rem;
+  }
+
+  .console-reference-shell .reference-detach-button {
+    width: 44px;
+    min-width: 44px;
+    padding: 0;
+    gap: 0;
+    overflow: hidden;
+    font-size: 0;
+  }
+}
+
+@media (max-width: 1220px) {
+  .console-reference-shell .reference-toolbar {
+    grid-template-columns: minmax(190px, 260px) minmax(220px, 320px) minmax(140px, 190px) minmax(0, 1fr);
+  }
+
+  .console-reference-shell .reference-icon-action span {
+    display: none;
+  }
+
+  .console-reference-shell .reference-icon-action {
+    min-width: 40px;
+    min-height: 40px;
+  }
+}

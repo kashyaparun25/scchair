@@ -22,6 +22,7 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appRoot = path.join(__dirname, "..");
+const appIconPath = path.join(appRoot, "public", "favicon.svg");
 
 const DEV_SERVER_URL = runtimeEnv("DEV_SERVER_URL", "http://127.0.0.1:5174");
 const API_BASE_URL = runtimeEnv("API_BASE_URL", "http://127.0.0.1:5180");
@@ -184,6 +185,7 @@ function createWindow(role, options) {
   const window = new BrowserWindow({
     ...options,
     title: options.title || "Second Chair",
+    icon: options.icon || appIconPath,
     show: false,
     backgroundColor: options.backgroundColor || baseBackground,
     transparent: isOverlayLike ? true : Boolean(options.transparent),
@@ -359,25 +361,23 @@ async function createMainWindow() {
   const isWin = process.platform === "win32";
 
   const window = createWindow("main", {
-    width: 1280,
-    height: 860,
-    minWidth: 960,
-    minHeight: 640,
+    width: 1440,
+    height: 900,
+    minWidth: 1180,
+    minHeight: 720,
     title: "Second Chair",
     frame: false,
     titleBarStyle: isMac ? "hiddenInset" : "hidden",
     titleBarOverlay: isWin
       ? {
-          color: "#0a0e17",
-          symbolColor: "#e7ecf3",
-          height: 36
+          color: "#ffffff",
+          symbolColor: "#111827",
+          height: 40
         }
       : undefined,
-    trafficLightPosition: isMac ? { x: 14, y: 18 } : undefined,
-    vibrancy: isMac ? "under-window" : undefined,
-    visualEffectState: isMac ? "active" : undefined,
-    backgroundColor: "#00000000",
-    transparent: true,
+    trafficLightPosition: isMac ? { x: 18, y: 18 } : undefined,
+    backgroundColor: "#ffffff",
+    transparent: false,
     hasShadow: true,
     roundedCorners: isMac ? true : undefined
   });

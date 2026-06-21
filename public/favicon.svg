@@ -1,6 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="14" fill="#17202a"/>
-  <path d="M18 22c0-4.4 3.6-8 8-8h12c4.4 0 8 3.6 8 8v12c0 4.4-3.6 8-8 8H26c-4.4 0-8-3.6-8-8V22Z" fill="#f8fafc"/>
-  <path d="M25 27h14M25 33h10M26 48l6-6 6 6" fill="none" stroke="#17202a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="46" cy="18" r="5" fill="#34d399"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Second Chair">
+  <rect width="64" height="64" rx="14" fill="#ffffff"/>
+  <path d="M24 19h16c3.1 0 5.6 2.5 5.6 5.6v8.9H27.7c-3.1 0-5.6-2.5-5.6-5.6v-6.9c0-1.1.9-2 1.9-2Z" fill="#111827"/>
+  <path d="M30.1 25.4h13.4c2.1 0 3.8 1.7 3.8 3.8v6.2H32.5c-2.1 0-3.8-1.7-3.8-3.8v-4.8c0-.8.6-1.4 1.4-1.4Z" fill="#dff4f1" stroke="#009688" stroke-width="2.4" stroke-linejoin="round"/>
+  <path d="M17.7 17.1 21 43.7M21 43.7h24.8M21 43.7l-4 7.2M41.7 43.7l4.1 7.2" fill="none" stroke="#111827" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M21.8 37.1h25.1" fill="none" stroke="#009688" stroke-width="4" stroke-linecap="round"/>
 </svg>
