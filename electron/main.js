@@ -4,6 +4,7 @@ import {
   desktopCapturer,
   globalShortcut,
   ipcMain,
+  nativeImage,
   shell,
   session
 } from "electron";
@@ -22,7 +23,10 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appRoot = path.join(__dirname, "..");
-const appIconPath = path.join(appRoot, "public", "favicon.svg");
+const appIconPath = process.platform === "darwin"
+  ? path.join(appRoot, "build", "icon.icns")
+  : path.join(appRoot, "build", "icon.png");
+const dockIconPath = path.join(appRoot, "build", "icon.png");
 
 const DEV_SERVER_URL = runtimeEnv("DEV_SERVER_URL", "http://127.0.0.1:5174");
 const API_BASE_URL = runtimeEnv("API_BASE_URL", "http://127.0.0.1:5180");
@@ -69,7 +73,16 @@ let panicHidden = false;
 
 applyStealth(stealthConfig);
 
+function applyAppIcon() {
+  if (process.platform !== "darwin" || !app.dock) return;
+  const image = nativeImage.createFromPath(dockIconPath);
+  if (!image.isEmpty()) {
+    app.dock.setIcon(image);
+  }
+}
+
 app.on("ready", () => {
+  applyAppIcon();
   applyStealth(stealthConfig);
 });
 
