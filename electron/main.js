@@ -25,6 +25,8 @@ const __dirname = path.dirname(__filename);
 const appRoot = path.join(__dirname, "..");
 const appIconPath = process.platform === "darwin"
   ? path.join(appRoot, "build", "icon.icns")
+  : process.platform === "win32"
+    ? path.join(appRoot, "build", "icon.ico")
   : path.join(appRoot, "build", "icon.png");
 const dockIconPath = path.join(appRoot, "build", "icon.png");
 
