@@ -29,6 +29,9 @@ const API_BASE_URL = runtimeEnv("API_BASE_URL", "http://127.0.0.1:5180");
 const API_HEALTH_URL = runtimeEnv("API_HEALTH_URL", `${API_BASE_URL}/api/bootstrap`);
 const SHOULD_START_API = runtimeEnv("SKIP_API_START", "") !== "1";
 const SERVER_START_TIMEOUT_MS = 30000;
+const packagedDataDir = () => path.join(app.getPath("userData"), "data");
+const packagedResourcesDir = () => process.resourcesPath || appRoot;
+const apiWorkingDirectory = () => app.isPackaged ? packagedResourcesDir() : appRoot;
 
 const ALLOWED_DEV_ORIGINS = new Set([
   new URL(DEV_SERVER_URL).origin,
@@ -144,13 +147,19 @@ async function startApiServer() {
     return;
   }
 
-  const npm = process.platform === "win32" ? "npm.cmd" : "npm";
-  const prepared = prepareSpawn(npm, ["run", "dev:api"]);
+  const prepared = app.isPackaged
+    ? prepareSpawn(process.execPath, [
+        path.join(appRoot, "dist-server", "http.mjs")
+      ])
+    : prepareSpawn(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "dev:api"]);
   apiProcess = spawn(prepared.command, prepared.args, {
-    cwd: appRoot,
+    cwd: apiWorkingDirectory(),
     env: {
       ...process.env,
-      API_PORT: new URL(API_BASE_URL).port || "5180"
+      API_PORT: new URL(API_BASE_URL).port || "5180",
+      SECOND_CHAIR_DATA_DIR: app.isPackaged ? packagedDataDir() : runtimeEnv("DATA_DIR"),
+      SECOND_CHAIR_RESOURCE_DIR: app.isPackaged ? packagedResourcesDir() : appRoot,
+      ELECTRON_RUN_AS_NODE: app.isPackaged ? "1" : process.env.ELECTRON_RUN_AS_NODE
     },
     stdio: ["ignore", "pipe", "pipe"]
   });

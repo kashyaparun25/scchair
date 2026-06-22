@@ -159,6 +159,13 @@ app.use((req, res, next) => {
   const requestId = makeId("req");
   res.locals.requestId = requestId;
   res.setHeader("X-Request-Id", requestId);
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
   next();
 });
 app.use(express.json({ limit: "20mb" }));
@@ -382,7 +389,10 @@ app.post("/api/sessions/archive", (_req, res) => {
 });
 
 app.get("/api/sessions/:id/export", (req, res) => {
-  const state = req.params.id === "current" ? repository.snapshot() : repository.getSessionArchive(req.params.id);
+  const liveState = repository.snapshot();
+  const state = req.params.id === "current" || liveState.session?.id === req.params.id
+    ? liveState
+    : repository.getSessionArchive(req.params.id);
   if (!state?.session) {
     sendApiError(res, new ApiError(404, "SESSION_NOT_FOUND", "Session not found."));
     return;

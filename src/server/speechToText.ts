@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import type { ProviderSettings } from "../shared/domain";
 import { resolveCapability, type ResolvedCapability } from "./providerRegistry";
 import type { SpeechToTextAdapter, SpeechToTextInput } from "./providerSettings";
-import { resolvePythonSpawn } from "./runtimeEnv";
+import { resolvePythonSpawn, resolveResourcePath } from "./runtimeEnv";
 import { openAiBatchTranscriptionModel } from "./streamingStt";
 
 export type AudioTranscriptionInput = SpeechToTextInput;
@@ -77,7 +77,7 @@ class NvidiaRivaSpeechToTextAdapter implements SpeechToTextAdapter {
       await writeFile(sourcePath, normalized.audio);
       const converted = await transcodeToRivaWav(sourcePath, wavPath, normalized.mimeType);
       if (!converted) return "";
-      const scriptPath = path.resolve("scripts/nvidia-riva-asr.py");
+      const scriptPath = resolveResourcePath("scripts", "nvidia-riva-asr.py");
       const python = resolvePythonSpawn();
       const { stdout } = await execFile(
         python.command,

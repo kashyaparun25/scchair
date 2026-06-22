@@ -61,14 +61,72 @@
     "dev:ui": "vite --host 127.0.0.1 --strictPort",
     "dev:api": "tsx src/server/http.ts",
     "electron": "electron electron/main.js",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && npm run build:server",
+    "build:server": "esbuild src/server/http.ts --bundle --platform=node --format=esm --packages=external --outfile=dist-server/http.mjs",
+    "rebuild:native": "electron-rebuild -f -w better-sqlite3",
+    "pack:desktop": "npm run build && npm run rebuild:native && electron-builder --dir",
+    "dist:mac": "npm run build && npm run rebuild:native && electron-builder --mac dmg",
+    "dist:win": "npm run build && electron-builder --win nsis",
+    "dist:win:x64": "npm run build && electron-builder --win nsis --x64",
+    "dist:win:arm64": "npm run build && electron-builder --win nsis --arm64",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc -b && node --check electron/main.js && node --check electron/preload.cjs && node --check electron/dev.mjs && node --check bin/scchair.mjs",
     "prepublishOnly": "npm run check"
   },
+  "build": {
+    "appId": "com.secondchair.commandconsole",
+    "productName": "Second Chair",
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "icon": "build/icon",
+    "files": [
+      "dist/**/*",
+      "dist-server/**/*",
+      "electron/**/*",
+      "src/server/**/*",
+      "src/shared/**/*",
+      "scripts/runtime-env.mjs",
+      "scripts/nvidia-riva-asr.py",
+      "scripts/nvidia-riva-stream.py",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*",
+      "scripts/*.py"
+    ],
+    "extraResources": [
+      {
+        "from": "scripts/nvidia-riva-asr.py",
+        "to": "scripts/nvidia-riva-asr.py"
+      },
+      {
+        "from": "scripts/nvidia-riva-stream.py",
+        "to": "scripts/nvidia-riva-stream.py"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
   "dependencies": {
-    "@vitejs/plugin-react": "^5.0.4",
-    "better-sqlite3": "^12.9.0",
+    "@vitejs/plugin-react": "^6.0.2",
+    "better-sqlite3": "^12.11.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "lucide-react": "^0.468.0",
@@ -78,18 +136,21 @@
     "pdf-parse": "^2.4.5",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.3",
-    "vite": "^7.1.12",
+    "vite": "^8.0.16",
     "ws": "^8.21.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.4",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.1.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.18.1",
-    "electron": "^42.0.1",
-    "tsx": "^4.21.0"
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1"
   }
 }

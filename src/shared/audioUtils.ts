@@ -45,6 +45,12 @@ export function streamingWebSocketUrl(endpoint: string): string {
     return endpoint;
   }
 
+  const desktopApiBase = (window as unknown as { __SECOND_CHAIR_API_BASE_URL__?: string }).__SECOND_CHAIR_API_BASE_URL__;
+  if (desktopApiBase) {
+    const wsBase = desktopApiBase.replace(/^http:/, "ws:").replace(/^https:/, "wss:").replace(/\/+$/, "");
+    return `${wsBase}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;
+  }
+
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const host = window.location.host;
   return `${protocol}//${host}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`;

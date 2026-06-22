@@ -1,3 +1,5 @@
+import path from "node:path";
+
 /** Read SECOND_CHAIR_* with INTERVIEW_COPILOT_* fallback for legacy installs. */
 export function runtimeEnv(name: string, fallback = ""): string {
   const second = process.env[`SECOND_CHAIR_${name}`];
@@ -18,4 +20,11 @@ export function resolvePythonSpawn(): { command: string; argsPrefix: string[] } 
     return { command: "py", argsPrefix: ["-3"] };
   }
   return { command: "python3", argsPrefix: [] };
+}
+
+/** Resolve resource files both from source checkouts and packaged Electron resources. */
+export function resolveResourcePath(...segments: string[]): string {
+  const resourceDir = runtimeEnv("RESOURCE_DIR");
+  if (resourceDir) return path.join(resourceDir, ...segments);
+  return path.resolve(...segments);
 }
