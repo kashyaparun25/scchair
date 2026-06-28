@@ -13,7 +13,8 @@ export const DEFAULT_STEALTH_CONFIG = Object.freeze({
   enabled: true,
   persona: "terminal",
   defaultClickThrough: false,
-  autoHideOnBlur: false
+  autoHideOnBlur: false,
+  panicHideMain: true
 });
 
 const CONFIG_FILE_NAME = "stealth-config.json";
@@ -59,7 +60,10 @@ function normalizeConfig(input) {
       : DEFAULT_STEALTH_CONFIG.defaultClickThrough,
     autoHideOnBlur: typeof source.autoHideOnBlur === "boolean"
       ? source.autoHideOnBlur
-      : DEFAULT_STEALTH_CONFIG.autoHideOnBlur
+      : DEFAULT_STEALTH_CONFIG.autoHideOnBlur,
+    panicHideMain: typeof source.panicHideMain === "boolean"
+      ? source.panicHideMain
+      : DEFAULT_STEALTH_CONFIG.panicHideMain
   };
 }
 

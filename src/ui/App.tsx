@@ -76,6 +76,7 @@ type StealthConfig = {
   persona: string;
   defaultClickThrough: boolean;
   autoHideOnBlur: boolean;
+  panicHideMain: boolean;
 };
 
 type StealthInfo = {

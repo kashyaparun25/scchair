@@ -13,6 +13,7 @@ type StealthConfig = {
   persona: string;
   defaultClickThrough: boolean;
   autoHideOnBlur: boolean;
+  panicHideMain: boolean;
 };
 
 type StealthInfo = {
@@ -26,7 +27,7 @@ type StealthBridge = {
   get: () => Promise<StealthInfo>;
   update: (patch: Partial<StealthConfig>) => Promise<{ config: StealthConfig; overlayClickThrough: boolean }>;
   setClickThrough: (enabled: boolean) => Promise<{ clickThrough: boolean }>;
-  panic: () => Promise<{ visible: boolean }>;
+  panic: () => Promise<{ visible: boolean; main?: boolean; overlay?: boolean; answer?: boolean; hidden?: string[] }>;
 };
 
 type ShortcutBridge = {
@@ -252,6 +253,18 @@ export function StealthPanel() {
             <span>
               <strong><EyeOff size={14} /> Auto-hide overlay when it loses focus</strong>
               <span className="settings-note">Overlay hides when you click away. Re-open with the shortcut.</span>
+            </span>
+          </label>
+          <label className="stealth-toggle">
+            <input
+              type="checkbox"
+              checked={config.panicHideMain}
+              onChange={(event) => void update({ panicHideMain: event.target.checked })}
+              disabled={!config.enabled}
+            />
+            <span>
+              <strong><EyeOff size={14} /> Panic also hides the main cockpit</strong>
+              <span className="settings-note">Press {describeShortcut(shortcuts?.toggleVisibility)} to instantly hide ALL windows including the cockpit. Best for screen-share emergencies.</span>
             </span>
           </label>
         </div>

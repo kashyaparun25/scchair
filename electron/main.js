@@ -267,10 +267,15 @@ function createWindow(role, options) {
 }
 
 function applyOverlayWindowBehavior(window, role) {
-  if (role !== "overlay" && role !== "answer") return;
+  // Content protection (hide from screen share / recording) is applied to ALL
+  // windows including the main cockpit, so the whole app stays invisible
+  // during screen sharing. macOS: NSWindow.sharingType = .none.
+  // Windows: SetWindowDisplayAffinity(WDA_MONITOR).
 
-  window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  window.setSkipTaskbar(true);
+  window.setVisibleOnAllWorkspaces(role !== "main", { visibleOnFullScreen: true });
+  if (role !== "main") {
+    window.setSkipTaskbar(true);
+  }
 
   try {
     window.setContentProtection(true);
@@ -280,30 +285,32 @@ function applyOverlayWindowBehavior(window, role) {
 
   applyWindowTitle(window, stealthConfig);
 
-  const enforceAlwaysOnTop = () => {
-    if (window.isDestroyed()) return;
-    try {
-      if (process.platform === "darwin") {
-        window.setAlwaysOnTop(true, "screen-saver", 1);
-      } else {
+  if (role !== "main") {
+    const enforceAlwaysOnTop = () => {
+      if (window.isDestroyed()) return;
+      try {
+        if (process.platform === "darwin") {
+          window.setAlwaysOnTop(true, "screen-saver", 1);
+        } else {
+          window.setAlwaysOnTop(true);
+        }
+      } catch {
         window.setAlwaysOnTop(true);
       }
-    } catch {
-      window.setAlwaysOnTop(true);
-    }
-  };
+    };
 
-  window.on("show", () => {
-    window.setIgnoreMouseEvents(role === "overlay" ? overlayClickThrough : false, { forward: true });
-    setTimeout(enforceAlwaysOnTop, 50);
-    setTimeout(enforceAlwaysOnTop, 200);
-  });
-  window.on("blur", () => {
-    setTimeout(enforceAlwaysOnTop, 100);
-    if (stealthConfig.autoHideOnBlur && !panicHidden) {
-      window.hide();
-    }
-  });
+    window.on("show", () => {
+      window.setIgnoreMouseEvents(role === "overlay" ? overlayClickThrough : false, { forward: true });
+      setTimeout(enforceAlwaysOnTop, 50);
+      setTimeout(enforceAlwaysOnTop, 200);
+    });
+    window.on("blur", () => {
+      setTimeout(enforceAlwaysOnTop, 100);
+      if (stealthConfig.autoHideOnBlur && !panicHidden) {
+        window.hide();
+      }
+    });
+  }
 }
 
 function applyStealthToAllWindows(config) {
@@ -336,12 +343,17 @@ function toggleOverlayInteraction() {
 
 function panicToggleVisibility() {
   const wantHidden = !panicHidden;
+  const rolesToHide = stealthConfig.panicHideMain
+    ? ["main", "overlay", "answer"]
+    : ["overlay", "answer"];
+
   if (wantHidden) {
     cachedVisibilityBeforePanic = {
+      main: Boolean(windows.main && !windows.main.isDestroyed() && windows.main.isVisible()),
       overlay: Boolean(windows.overlay && !windows.overlay.isDestroyed() && windows.overlay.isVisible()),
       answer: Boolean(windows.answer && !windows.answer.isDestroyed() && windows.answer.isVisible())
     };
-    for (const role of ["overlay", "answer"]) {
+    for (const role of rolesToHide) {
       const window = windows[role];
       if (window && !window.isDestroyed()) {
         try {
@@ -353,10 +365,10 @@ function panicToggleVisibility() {
       }
     }
     panicHidden = true;
-    return { visible: false, hidden: ["overlay", "answer"] };
+    return { visible: false, hidden: rolesToHide };
   }
 
-  for (const role of ["overlay", "answer"]) {
+  for (const role of rolesToHide) {
     const window = windows[role];
     if (!window || window.isDestroyed()) continue;
     const shouldShow = cachedVisibilityBeforePanic[role];
@@ -364,7 +376,11 @@ function panicToggleVisibility() {
       try {
         window.setOpacity(1);
         window.show();
-        window.setIgnoreMouseEvents(role === "overlay" ? overlayClickThrough : false, { forward: true });
+        if (role === "overlay") {
+          window.setIgnoreMouseEvents(overlayClickThrough, { forward: true });
+        } else if (role === "answer") {
+          window.setIgnoreMouseEvents(false, { forward: true });
+        }
       } catch (error) {
         console.warn(`[stealth] could not restore ${role}:`, error?.message);
       }
@@ -373,6 +389,7 @@ function panicToggleVisibility() {
   panicHidden = false;
   return {
     visible: true,
+    main: Boolean(windows.main && !windows.main.isDestroyed() && windows.main.isVisible()),
     overlay: Boolean(windows.overlay && !windows.overlay.isDestroyed() && windows.overlay.isVisible()),
     answer: Boolean(windows.answer && !windows.answer.isDestroyed() && windows.answer.isVisible())
   };
@@ -741,7 +758,8 @@ ipcMain.handle("stealth:update", async (event, patch) => {
     ...("enabled" in patch ? { enabled: Boolean(patch.enabled) } : {}),
     ...("persona" in patch && STEALTH_PERSONAS[patch.persona] ? { persona: patch.persona } : {}),
     ...("defaultClickThrough" in patch ? { defaultClickThrough: Boolean(patch.defaultClickThrough) } : {}),
-    ...("autoHideOnBlur" in patch ? { autoHideOnBlur: Boolean(patch.autoHideOnBlur) } : {})
+    ...("autoHideOnBlur" in patch ? { autoHideOnBlur: Boolean(patch.autoHideOnBlur) } : {}),
+    ...("panicHideMain" in patch ? { panicHideMain: Boolean(patch.panicHideMain) } : {})
   };
 
   stealthConfig = saveStealthConfig(next);
