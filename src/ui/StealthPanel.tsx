@@ -145,6 +145,8 @@ export function StealthPanel() {
   }
 
   const { config, personas, shortcuts, overlayClickThrough } = info;
+  const activePersona = personas.find((p) => p.id === (config.enabled ? config.persona : "none")) || personas[0];
+  const ActiveIcon = PERSONA_ICONS[activePersona?.id] || ShieldCheck;
 
   const update = async (patch: Partial<StealthConfig>) => {
     const bridge = getDesktopBridge();
@@ -178,6 +180,11 @@ export function StealthPanel() {
         <div>
           <span className="eyebrow">Window controls</span>
           <h3>Low-profile overlay</h3>
+        </div>
+        <div className="stealth-status-pill" title="Current running label">
+          <ActiveIcon size={13} />
+          <span>Running as</span>
+          <strong>{activePersona?.label || "Second Chair"}</strong>
         </div>
       </header>
 

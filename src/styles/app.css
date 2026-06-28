@@ -3770,6 +3770,36 @@ h1 {
   gap: 12px;
 }
 
+.stealth-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 5px 10px 5px 8px;
+  color: var(--ink-strong);
+  font-size: 0.74rem;
+  font-weight: 650;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+.stealth-status-pill svg {
+  color: var(--info);
+}
+
+.stealth-status-pill strong {
+  color: var(--ink-strong);
+  font-weight: 750;
+}
+
+.stealth-status-pill span {
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .stealth-body {
   display: grid;
   gap: 14px;
@@ -6240,7 +6270,29 @@ body:has(.console-reference-shell) {
 .answer-window-shell,
 .answer-window-shell * {
   -webkit-app-region: no-drag;
-  app-region: no-drag;
+}
+
+/* But the header itself (and its drag handle) must remain draggable so the
+   frameless window can be moved around. The rule above uses a broad selector
+   that would otherwise clobber the drag region defined earlier. */
+.answer-window-header,
+.answer-window-header-title,
+.answer-window-header .answer-window-drag-handle,
+.overlay-shell .overlay-topbar,
+.overlay-shell .overlay-topbar .overlay-brand,
+.overlay-shell .overlay-topbar .overlay-drag-handle {
+  -webkit-app-region: drag !important;
+  app-region: drag !important;
+}
+
+/* Interactive elements inside the headers stay clickable. */
+.answer-window-header button,
+.answer-window-header-title button,
+.overlay-topbar button,
+.overlay-topbar .overlay-status,
+.overlay-topbar .overlay-status * {
+  -webkit-app-region: no-drag !important;
+  app-region: no-drag !important;
 }
 
 html[data-platform="darwin"] .reference-titlebar {

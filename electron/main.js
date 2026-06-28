@@ -9,6 +9,7 @@ import {
   session
 } from "electron";
 import { spawn } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { prepareSpawn, runtimeEnv } from "../scripts/runtime-env.mjs";
@@ -24,7 +25,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appRoot = path.join(__dirname, "..");
 const appIconPath = process.platform === "darwin"
-  ? path.join(appRoot, "build", "icon.icns")
+  ? path.join(appRoot, "build", "icon.png")
   : process.platform === "win32"
     ? path.join(appRoot, "build", "icon.ico")
   : path.join(appRoot, "build", "icon.png");
@@ -77,9 +78,14 @@ applyStealth(stealthConfig);
 
 function applyAppIcon() {
   if (process.platform !== "darwin" || !app.dock) return;
-  const image = nativeImage.createFromPath(dockIconPath);
-  if (!image.isEmpty()) {
-    app.dock.setIcon(image);
+  try {
+    if (!fs.existsSync(dockIconPath)) return;
+    const image = nativeImage.createFromPath(dockIconPath);
+    if (!image.isEmpty()) {
+      app.dock.setIcon(image);
+    }
+  } catch {
+    // Dock icon is best-effort; ignore failures.
   }
 }
 
@@ -206,10 +212,15 @@ function createWindow(role, options) {
   const isOverlayLike = role === "overlay" || role === "answer";
   const baseBackground = isOverlayLike ? "#00000000" : undefined;
 
+  // Resolve a window icon that actually exists on disk so Electron doesn't
+  // print warnings about missing .icns/.ico assets during development.
+  const windowIcon = options.icon
+    || (fs.existsSync(appIconPath) ? appIconPath : undefined);
+
   const window = new BrowserWindow({
     ...options,
     title: options.title || "Second Chair",
-    icon: options.icon || appIconPath,
+    icon: windowIcon,
     show: false,
     backgroundColor: options.backgroundColor || baseBackground,
     transparent: isOverlayLike ? true : Boolean(options.transparent),
