@@ -1,148 +1,169 @@
-# Second Chair
+# Second Chair — private real-time copilot for interviews & meetings
 
-**Second Chair** is your private, local-first interview and meeting copilot. It listens to live conversation, spots questions, and drafts grounded answers from your resume, notes, and job materials — all on your machine.
+**Second Chair** listens to your live conversation, spots questions as they're asked, and drafts grounded answers from your resume, notes, and job materials. Everything runs on your machine.
 
-Works on **macOS**, **Windows**, and common **Linux** desktop distributions.
+You can run it as a **standalone desktop app** with a dark translucent glass cockpit, or as a minimal **floating overlay** that sits on top of your video call. Both modes stay invisible to screen share.
 
-**No npm account. No GitHub account. No signup.**
+Works on **macOS**, **Windows**, and **Linux**.
 
----
-
-## Install (one command — everything automated)
-
-The installer automatically sets up:
-
-- **Node.js 20+** (via Homebrew on macOS, Linux package managers/NodeSource on Linux, winget on Windows)
-- **Python 3** (via Homebrew, Linux package managers, or winget)
-- **NVIDIA Riva Python client** (`pip install nvidia-riva-client`)
-- **App dependencies** (`npm install`)
-- **`scchair` command** on your PATH
-
-You need **Homebrew** on macOS (`brew`), a common Linux package manager (`apt`, `dnf`, `yum`, or `pacman`), or **winget** on Windows. Otherwise install Node.js manually first from [nodejs.org](https://nodejs.org).
-
-### macOS / Linux
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/install.sh | bash
-```
-
-### Windows (PowerShell)
-
-```powershell
-irm https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/install.ps1 | iex
-```
-
----
-
-## Run (one command)
-
-```bash
-scchair
-```
-
-That's it. Opens the desktop app every time.
-
-### Other commands
-
-```bash
-scchair web       # Browser-only mode (no Electron)
-scchair doctor    # Check Node, Python, and dependencies
-scchair help
-```
-
-### Update to latest version
-
-Re-run the install command — it updates in place:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/kashyaparun25/scchair/main/scripts/install.sh | bash
-```
-
----
-
-## Prerequisites (manual fallback)
-
-The installer tries to install everything automatically. If auto-install fails, install manually:
-
-| Requirement | macOS | Linux | Windows |
-|-------------|-------|-------|---------|
-| Node.js 20+ | `brew install node` | [nodejs.org](https://nodejs.org) or distro packages with Node 20+ | [nodejs.org](https://nodejs.org) or `winget install OpenJS.NodeJS.LTS` |
-| Python 3 | `brew install python` | `sudo apt install python3 python3-pip` or equivalent | [python.org](https://www.python.org/downloads/) |
-| Native build tools | Xcode Command Line Tools | `sudo apt install build-essential` or equivalent | Visual Studio Build Tools if native rebuilds fail |
-| NVIDIA Riva client | `pip install -U nvidia-riva-client` | same | same |
-
-Verify with:
-
-```bash
-node --version    # v20+
-python3 --version
-scchair doctor
-```
-
----
-
-## First-time setup
-
-1. Run `scchair`
-2. Open **Settings** in the app (NVIDIA is the default AI provider)
-3. Paste your **NVIDIA API key** — an in-app guide shows where to get it
-4. Optionally switch to OpenAI, Gemini, or Claude (each includes its own key guide)
-5. Complete **Setup** with your role, company, and uploaded documents
-
-API keys are stored locally in `.local-data/app-config.json`, not in the cloud.
-
-Run `scchair doctor` anytime to verify Node, Python, and NVIDIA Riva are ready.
+> No account. No signup. No cloud.
 
 ---
 
 ## What it does
 
-- **Listens** to your interview or meeting in real time
-- **Detects** when the interviewer asks a question
-- **Drafts answers** grounded in your resume, job description, and notes
-- **Floats an overlay** so you can glance at suggestions without leaving the call
-
-Everything runs locally. Your audio and documents never leave your machine except for API calls to providers you configure.
+- **Real-time transcript** — captures mic and system audio during calls
+- **Question detection** — spots what the interviewer is asking, reframes it for context
+- **Answer drafting** — generates a speakable script grounded in your resume, job description, and uploaded notes
+- **Knowledge grounding** — uploaded docs are semantically indexed so every answer pulls from your materials
+- **Floating overlay** — a compact transparent window you can keep on top of Zoom / Meet / Teams
+- **Detached answer window** — a second floating window dedicated to answer preview
+- **Review and report** — session timeline with question history, practice queue, and export
 
 ---
 
-## Clone and develop
+## Stealth & undetectability
+
+Second Chair can disguise itself so it doesn't draw attention:
+
+| Feature | What it does |
+|---|---|
+| **Process disguise** | The app appears as "Terminal", "Activity Monitor", or "System Settings" in the Dock, menu bar, and Activity Monitor |
+| **Content protection** | All windows are invisible to screen-sharing apps (Zoom, Meet, Teams, OBS) on macOS 12.3+ |
+| **Panic toggle** (`⌘⇧V`) | Instantly hides every window with one key — press again to bring them back |
+| **Click-through overlay** | The floating overlay can pass mouse clicks through to the app underneath (`⌘⇧I` to flip) |
+| **Auto-hide** | Optional: overlay disappears the moment you click away |
+| **Dark translucent glass UI** | Every panel has a frosted-glass look with `backdrop-filter` blur |
+
+Open **Settings → Low-profile overlay** in the app to configure these. Stealth is on by default.
+
+---
+
+## Quick start
+
+### Option A — Desktop app (recommended)
+
+Download the latest build for your platform from [Releases](https://github.com/kashyaparun25/scchair/releases):
+
+| Platform | Download |
+|---|---|
+| macOS (Apple Silicon) | `Second Chair-*-mac-arm64.dmg` |
+| macOS (Intel) | `Second Chair-*-mac-x64.dmg` |
+| Windows (x64) | `Second Chair-*-win-x64.exe` |
+| Windows (ARM) | `Second Chair-*-win-arm64.exe` |
+| Linux (x64) | `Second Chair-*-linux-x86_64.AppImage` |
+| Linux (ARM) | `Second Chair-*-linux-arm64.AppImage` |
+
+Open, drag to Applications (macOS) or run the installer (Windows), then launch. The first-run wizard walks you through setup.
+
+### Option B — One-command install (`npx`)
+
+```bash
+npx scchair
+```
+
+Installs everything and launches the desktop app. Works on macOS, Windows, and Linux.
+
+If you prefer to install manually, see [Install from source](#install-from-source).
+
+---
+
+## First-time setup
+
+1. Launch the app
+2. Open **Settings** → pick your AI provider (NVIDIA is the default)
+3. Paste your API key — each provider's key guide is shown inline
+4. Open **Setup** → fill in your role, company, and round type
+5. Upload a resume, job description, or notes in the Knowledge section
+6. Go to **Live** → turn on Interviewer audio to start capturing
+
+That's it. API keys are stored locally in your machine's app data folder.
+
+---
+
+## How to use
+
+1. **Set the context** in Setup — role, documents, answer style
+2. **Start Live Assist** — enable Interviewer (system) audio and optionally your mic
+3. **Watch the transcript** populate on the right rail
+4. **Questions appear** automatically with a speakable answer below
+5. **Open the floating overlay** (top‑bar button or `⌘⇧O`) to keep answers visible during a call
+6. **Use the panic toggle** (`⌘⇧V`) if you need to hide everything instantly
+
+---
+
+## Keyboard shortcuts
+
+| Shortcut | Action |
+|---|---|
+| `⌘⇧V` | Panic — hide/restore all windows |
+| `⌘⇧I` | Toggle click‑through on the overlay |
+| `⌘⇧O` | Show/hide floating overlay |
+| `⌘⇧A` | Show/hide detached answer window |
+| `⌘⇧H` | Hide overlay windows only |
+| `⌘⇧S` | Capture screenshot for context |
+
+---
+
+## Install from source
 
 ```bash
 git clone https://github.com/kashyaparun25/scchair.git
 cd scchair
 npm install
-cp .env.example .env   # optional bootstrap keys
-npm run dev:desktop    # Electron desktop
 ```
 
-| Command | Description |
-|---------|-------------|
-| `npm start` | Same as `scchair` |
-| `npm run dev:desktop` | Local API + Vite UI + Electron |
-| `npm run dev` | Browser-only (API + UI) |
-| `npm run doctor` | Environment check |
+### Run in development
 
-Default ports: UI `5174`, API `5180`.
+```bash
+npm run dev:desktop     # Electron desktop (API + UI + Electron)
+npm run dev             # Browser only (API + UI at localhost:5174)
+```
+
+### Build distributable packages
+
+```bash
+npm run build           # Compile TypeScript and bundle UI
+npm run dist:mac        # → release/Second Chair-*-mac-arm64.dmg
+npm run dist:win        # → release/Second Chair-*-win-arm64.exe
+npm run dist:linux      # → release/Second Chair-*-linux-arm64.AppImage
+npm run dist:all        # All three platforms (mac, win, linux)
+```
+
+Default dev ports: UI `5174`, API `5180`.
 
 ---
 
-## Install locations
+## Requirements
 
-| Platform | App files | Command |
-|----------|-----------|---------|
-| macOS / Linux | `~/.scchair/app` | `~/.local/bin/scchair` |
-| Windows | `%LOCALAPPDATA%\scchair\app` | `%LOCALAPPDATA%\scchair\bin\scchair.cmd` |
+| Requirement | Why |
+|---|---|
+| Node.js 20+ | Runtime |
+| Python 3 (optional) | NVIDIA Riva client for some STT configurations |
+| Homebrew / winget / apt (optional) | Auto-installer prerequisites |
 
-Override with `SCCHAIR_HOME` or `SCCHAIR_BIN_DIR` environment variables.
+macOS: Xcode Command Line Tools. Windows: Visual Studio Build Tools for native modules. Linux: `build-essential`.
+
+---
+
+## Contributing
+
+Pull requests are welcome. Before submitting:
+
+1. Run `npm run check` to verify TypeScript and syntax
+2. Run `npm run build` to confirm the bundle compiles
+3. Test both `npm run dev` (browser) and `npm run dev:desktop` (Electron)
+
+Report issues or suggest features at [github.com/kashyaparun25/scchair/issues](https://github.com/kashyaparun25/scchair/issues).
 
 ---
 
 ## Privacy
 
-- Audio and documents stay on your machine
+- Audio, transcript, and documents stay on your machine
 - API calls go only to providers you configure (NVIDIA, OpenAI, etc.)
-- No account or cloud backend required
+- No telemetry, no accounts, no cloud backend
+- API keys are stored in your local app data directory, never transmitted elsewhere
 
 ---
 
