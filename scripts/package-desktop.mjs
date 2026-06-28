@@ -26,7 +26,14 @@ function run(command, args, options = {}) {
 }
 
 function isCurrentPlatformBuild(args) {
-  return args.includes("--dir") || args.includes("--mac") || args.includes("--linux");
+  const platformFlags = {
+    darwin: "--mac",
+    win32: "--win",
+    linux: "--linux"
+  };
+  const expectedFlag = platformFlags[process.platform];
+  if (!expectedFlag) return args.includes("--dir");
+  return args.includes("--dir") || args.includes(expectedFlag);
 }
 
 async function runOrThrow(label, command, args) {

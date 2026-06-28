@@ -1,7 +1,7 @@
 {
   "name": "scchair",
   "version": "0.1.0",
-  "description": "Second Chair — private real-time interview and meeting assistant. One command: npx scchair",
+  "description": "Second Chair \u2014 private real-time interview and meeting assistant. One command: npx scchair",
   "type": "module",
   "main": "electron/main.js",
   "bin": {
@@ -71,6 +71,9 @@
     "dist:win": "node scripts/package-desktop.mjs --win nsis",
     "dist:win:x64": "node scripts/package-desktop.mjs --win nsis --x64",
     "dist:win:arm64": "node scripts/package-desktop.mjs --win nsis --arm64",
+    "dist:linux": "node scripts/package-desktop.mjs --linux appImage",
+    "dist:linux:x64": "node scripts/package-desktop.mjs --linux appImage --x64",
+    "dist:all": "node scripts/package-desktop.mjs --mac dmg --win nsis --linux appImage",
     "preview": "vite preview --host 127.0.0.1",
     "check": "tsc -b && node --check electron/main.js && node --check electron/preload.cjs && node --check electron/dev.mjs && node --check bin/scchair.mjs",
     "prepublishOnly": "npm run check"
@@ -118,6 +121,13 @@
     "win": {
       "target": [
         "nsis"
+      ]
+    },
+    "linux": {
+      "executableName": "second-chair",
+      "category": "Utility",
+      "target": [
+        "appImage"
       ]
     },
     "nsis": {
